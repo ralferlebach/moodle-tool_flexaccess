@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.4 — 2026-08-17
+- Lockstep-Versionsschub auf 0.1.4 (keine funktionale Änderung).
+
 ## 0.1.3 — 2026-08-17
 - Lockstep-Versionsschub auf 0.1.3 (keine funktionale Änderung; Campaigns/Follow-up folgen ab 0.5.x).
 
