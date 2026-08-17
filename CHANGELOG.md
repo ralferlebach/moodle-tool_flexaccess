@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.2 — 2026-08-17
+- Scope-Erweiterung (Planung/Doku): leichtgewichtiges **Campaign/Invitation-Modell** und **Follow-up-Konfiguration** aufgenommen (ADR-014); Roadmap 0.5.x + Backlog ergänzt; Umstellung von null_provider auf vollständigen Privacy Provider vorgemerkt.
+
 ## 0.1.1 — 2026-08-17
 - Version scheme moved to incremental `0.1.x` (release `0.1.1`).
 - Added `$plugin->supported = [405, 502]` for matrix consistency; hard dependencies on `auth_flexaccess` + `enrol_flexaccess` confirmed (ADR-010).
