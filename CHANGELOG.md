@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 — 2026-08-17
+- Version scheme moved to incremental `0.1.x` (release `0.1.1`).
+- Added `$plugin->supported = [405, 502]` for matrix consistency; hard dependencies on `auth_flexaccess` + `enrol_flexaccess` confirmed (ADR-010).
+
 ## 0.1.0-alpha — 2026-08-17
 - Initial architecture scaffold.
 

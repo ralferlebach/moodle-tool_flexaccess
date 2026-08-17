@@ -22,7 +22,7 @@ Bereitstellung einer zentralen Moodle-Administrationsoberfläche für Betrieb, D
 - keine eigene Account-/Token-/Mailqueue-/Policy-Tabelle,
 - keine direkte Mutation fachlicher Tabellen der anderen Plugins,
 - keine Beteiligung am Login-Runtime-Pfad,
-- keine Abhängigkeit von `mod_flexaccessactivation`,
+- keine Abhängigkeit von `mod_flexaccess`,
 - keine allgemeinen Availability-Funktionen.
 
 
