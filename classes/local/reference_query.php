@@ -23,7 +23,9 @@
 
 namespace tool_flexaccess\local;
 
-/** Normalises administrator-entered FlexAccess reference numbers. */
+/**
+ * Normalises administrator-entered FlexAccess reference numbers.
+ */
 final class reference_query {
     /**
      * Normalise a reference-number search term.

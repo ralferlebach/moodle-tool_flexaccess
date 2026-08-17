@@ -33,7 +33,41 @@ $PAGE->set_pagelayout('admin');
 $PAGE->set_title(get_string('mailqueue', 'tool_flexaccess'));
 $PAGE->set_heading(get_string('pluginname', 'tool_flexaccess'));
 
+$status = optional_param('status', '', PARAM_ALPHA);
+$page = optional_param('page', 0, PARAM_INT);
+$perpage = 50;
+$statusfilter = in_array($status, ['queued', 'sent', 'failed'], true) ? $status : '';
+$baseurl = new moodle_url('/admin/tool/flexaccess/mailqueue.php', ['status' => $statusfilter]);
+
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('mailqueue', 'tool_flexaccess'));
-echo $OUTPUT->notification(get_string('stubmailqueue', 'tool_flexaccess'), 'info');
+
+$summary = \auth_flexaccess\api::mailqueue_summary();
+echo html_writer::tag('p', get_string('mqsummary', 'tool_flexaccess', (object) [
+    'queued' => $summary['queued'], 'sent' => $summary['sent'], 'failed' => $summary['failed'],
+]));
+
+$total = \auth_flexaccess\api::count_mailqueue($statusfilter);
+$rows = \auth_flexaccess\api::list_mailqueue($statusfilter, $page, $perpage);
+
+$table = new html_table();
+$table->head = [
+    get_string('mqrecipient', 'tool_flexaccess'),
+    get_string('mqtype', 'tool_flexaccess'),
+    get_string('mqstatus', 'tool_flexaccess'),
+    get_string('mqattempts', 'tool_flexaccess'),
+    get_string('mqnextrun', 'tool_flexaccess'),
+];
+foreach ($rows as $row) {
+    $nextrun = $row->nextrun > 0 ? userdate($row->nextrun) : '-';
+    $table->data[] = [s($row->recipient), s($row->mailtype), s($row->status), (int) $row->attempts, $nextrun];
+}
+
+if (empty($table->data)) {
+    echo $OUTPUT->notification(get_string('mqnone', 'tool_flexaccess'), 'info');
+} else {
+    echo html_writer::table($table);
+    echo $OUTPUT->paging_bar($total, $page, $perpage, $baseurl);
+}
+
 echo $OUTPUT->footer();

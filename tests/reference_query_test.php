@@ -23,9 +23,13 @@
 
 namespace tool_flexaccess;
 
-/** Reference query tests. */
+/**
+ * Reference query tests.
+ */
 final class reference_query_test extends \advanced_testcase {
-    /** Test valid and invalid reference search terms. */
+    /**
+     * Test valid and invalid reference search terms.
+     */
     public function test_normalise(): void {
         $this->assertSame('483921', \tool_flexaccess\local\reference_query::normalise(' 483921 '));
         $this->assertSame('', \tool_flexaccess\local\reference_query::normalise('48-3921'));

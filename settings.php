@@ -26,15 +26,27 @@ defined('MOODLE_INTERNAL') || die();
 if ($hassiteconfig) {
     $ADMIN->add('tools', new admin_category('tool_flexaccess_category', get_string('pluginname', 'tool_flexaccess')));
     $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
-        'tool_flexaccess_dashboard', get_string('dashboard', 'tool_flexaccess'),
-        new moodle_url('/admin/tool/flexaccess/index.php'), 'tool/flexaccess:viewdashboard'));
+        'tool_flexaccess_dashboard',
+        get_string('dashboard', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/index.php'),
+        'tool/flexaccess:viewdashboard'
+    ));
     $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
-        'tool_flexaccess_accounts', get_string('accounts', 'tool_flexaccess'),
-        new moodle_url('/admin/tool/flexaccess/accounts.php'), 'tool/flexaccess:viewaccounts'));
+        'tool_flexaccess_accounts',
+        get_string('accounts', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/accounts.php'),
+        'tool/flexaccess:viewaccounts'
+    ));
     $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
-        'tool_flexaccess_mailqueue', get_string('mailqueue', 'tool_flexaccess'),
-        new moodle_url('/admin/tool/flexaccess/mailqueue.php'), 'tool/flexaccess:managemailqueue'));
+        'tool_flexaccess_mailqueue',
+        get_string('mailqueue', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/mailqueue.php'),
+        'tool/flexaccess:managemailqueue'
+    ));
     $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
-        'tool_flexaccess_policies', get_string('policies', 'tool_flexaccess'),
-        new moodle_url('/admin/tool/flexaccess/policies.php'), 'tool/flexaccess:viewpolicies'));
+        'tool_flexaccess_policies',
+        get_string('policies', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/policies.php'),
+        'tool/flexaccess:viewpolicies'
+    ));
 }

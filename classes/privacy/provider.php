@@ -23,9 +23,15 @@
 
 namespace tool_flexaccess\privacy;
 
-/** The administration tool stores no personal data of its own in the MVP. */
+/**
+ * The administration tool stores no personal data of its own in the MVP.
+ */
 final class provider implements \core_privacy\local\metadata\null_provider {
-    /** @return string */
+    /**
+     * Get the reason there is no personal data.
+     *
+     * @return string
+     */
     public static function get_reason(): string {
         return 'privacy:metadata';
     }
