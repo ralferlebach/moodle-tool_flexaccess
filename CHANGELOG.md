@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.5 — 2026-08-17
+- Lockstep-Versionsschub auf 0.1.5 (keine funktionale Änderung; Policy-Diagnose kann `enrol_flexaccess\api` konsumieren).
+
 ## 0.1.4 — 2026-08-17
 - Lockstep-Versionsschub auf 0.1.4 (keine funktionale Änderung).
 
