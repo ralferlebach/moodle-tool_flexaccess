@@ -35,5 +35,36 @@ $PAGE->set_heading(get_string('pluginname', 'tool_flexaccess'));
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('dashboard', 'tool_flexaccess'));
-echo $OUTPUT->notification(get_string('stubdashboard', 'tool_flexaccess'), 'info');
+
+$stats = \auth_flexaccess\api::account_stats();
+$mail = \auth_flexaccess\api::mailqueue_summary();
+
+$accounttable = new html_table();
+$accounttable->caption = get_string('dashaccounts', 'tool_flexaccess');
+$accounttable->data = [
+    [get_string('dashtotal', 'tool_flexaccess'), $stats['total']],
+    [get_string('accounttypetemporary', 'tool_flexaccess'), $stats['temporary']],
+    [get_string('accounttypeauthenticated', 'tool_flexaccess'), $stats['authenticated']],
+    [get_string('dashprovisional', 'tool_flexaccess'), $stats['provisional']],
+    [get_string('dashexpired', 'tool_flexaccess'), $stats['expired']],
+];
+echo html_writer::table($accounttable);
+
+$mailtable = new html_table();
+$mailtable->caption = get_string('dashmail', 'tool_flexaccess');
+$due = $mail['nextdue'] > 0 ? userdate($mail['nextdue']) : get_string('dashnone', 'tool_flexaccess');
+$mailtable->data = [
+    [get_string('mqqueued', 'tool_flexaccess'), $mail['queued']],
+    [get_string('mqsent', 'tool_flexaccess'), $mail['sent']],
+    [get_string('mqfailed', 'tool_flexaccess'), $mail['failed']],
+    [get_string('dashnextdue', 'tool_flexaccess'), $due],
+];
+echo html_writer::table($mailtable);
+
+echo html_writer::div(
+    html_writer::link(new moodle_url('/admin/tool/flexaccess/accounts.php'),
+        get_string('accounts', 'tool_flexaccess')) . ' | ' .
+    html_writer::link(new moodle_url('/admin/tool/flexaccess/mailqueue.php'),
+        get_string('mailqueue', 'tool_flexaccess')));
+
 echo $OUTPUT->footer();

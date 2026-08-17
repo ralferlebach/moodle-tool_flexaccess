@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.1.16 — 2026-08-17
+- Lockstep-Versionsschub auf 0.1.16 (keine funktionale Änderung).
+
+## 0.1.15 — 2026-08-17
+- Lockstep-Versionsschub auf 0.1.15 (keine funktionale Änderung).
+
+## 0.1.14 — 2026-08-17
+- **Dashboard + Mailqueue-Seite real:** `index.php` zeigt Konten-/Mail-Kennzahlen über die Auth-Facaden; `mailqueue.php` listet die Queue (Filter, Pagination, ohne Token/Payload). Keine Direktzugriffe auf Auth-Tabellen.
+
+## 0.1.13 — 2026-08-17
+- Lockstep-Versionsschub auf 0.1.13 (keine funktionale Änderung).
+
+## 0.1.12 — 2026-08-17
+- Lockstep-Versionsschub auf 0.1.12 (keine funktionale Änderung).
+
+## 0.1.11 — 2026-08-17
+- **Accounts-Seite real umgesetzt:** `accounts.php` listet FlexAccess-Konten über die Auth-Facade (Filter, Pagination) und bietet capability-/sesskey-gesicherte **Admin-Conversion** temporärer Konten. Keine Direktzugriffe auf Auth-Tabellen.
+
+## 0.1.10 — 2026-08-17
+- Lockstep-Versionsschub auf 0.1.10 (keine funktionale Änderung).
+
+## 0.1.9 — 2026-08-17
+- Lockstep-Versionsschub auf 0.1.9 (keine funktionale Änderung).
+
+## 0.1.8 — 2026-08-17
+- Lockstep-Versionsschub auf 0.1.8 (keine funktionale Änderung).
+
+## 0.1.7 — 2026-08-17
+- **Hochziehen:** `policies.php` konsumiert jetzt real die enrol-Facade `enrol_flexaccess\api::get_effective_policy` und zeigt je Kurs (`?courseid=`) die wirksame Policy read-only an — ohne Geheimnisse/Hashes. Neuer reiner `local\policy_presenter` (+ PHPUnit `policy_presenter_test`).
+- **CI-Fix (phpcs):** zu lange Zeile in `policies.php` in einen Sprachstring ausgelagert.
+- **CI-Fix:** pgsql-Workflow-createdb-Zeile entfernt.
+
 ## 0.1.6 — 2026-08-17
 - Lockstep-Versionsschub auf 0.1.6 (keine funktionale Änderung).
 
