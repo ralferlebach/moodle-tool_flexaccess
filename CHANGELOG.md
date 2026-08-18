@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.31 — 2026-08-18 — Aufraeumen: toter persistence_followup-Mailpfad entfernt
+- Keine Codeaenderung.
+
 ## 0.1.30 — 2026-08-18 — DRY: gemeinsame Identitaetsfelder der Formulare
 - Keine Codeaenderung.
 
