@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.33 — 2026-08-19 — Enrolment-Expiry (§32/§33) + echte jmeter/playwright-Plaene (§26/§27)
+- Keine Codeaenderung.
+
 ## 0.1.32 — 2026-08-19 — Magic-Login, Mail-Queue-Retrofit, SEC-03, main-CI + jmeter/playwright
 - Keine Codeaenderung.
 
