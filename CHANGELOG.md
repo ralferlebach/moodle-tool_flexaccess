@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.32 — 2026-08-19 — Magic-Login, Mail-Queue-Retrofit, SEC-03, main-CI + jmeter/playwright
+- Keine Codeaenderung.
+
 ## 0.1.31 — 2026-08-18 — Aufraeumen: toter persistence_followup-Mailpfad entfernt
 - Keine Codeaenderung.
 
