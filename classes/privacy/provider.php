@@ -17,6 +17,7 @@
 /**
  * Privacy provider for tool_flexaccess.
  *
+ * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -25,6 +26,8 @@ namespace tool_flexaccess\privacy;
 
 /**
  * The administration tool stores no personal data of its own in the MVP.
+ *
+ * @package    tool_flexaccess
  */
 final class provider implements \core_privacy\local\metadata\null_provider {
     /**

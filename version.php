@@ -17,6 +17,7 @@
 /**
  * Plugin version definition for tool_flexaccess.
  *
+ * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -24,11 +25,11 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'tool_flexaccess';
-$plugin->version = 2026081880;
+$plugin->version = 2026081890;
 $plugin->requires = 2024100700; // Moodle 4.5.
 $plugin->supported = [405, 502];
 $plugin->maturity = MATURITY_ALPHA;
-$plugin->release = '0.1.17';
+$plugin->release = '0.1.18';
 $plugin->dependencies = [
     'auth_flexaccess' => 2026081700,
     'enrol_flexaccess' => 2026081700,

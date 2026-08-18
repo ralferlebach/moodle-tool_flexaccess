@@ -29,6 +29,9 @@ use enrol_flexaccess\local\policy;
 
 /**
  * Policy presenter tests.
+ *
+ * @package    tool_flexaccess
+ * @covers     \tool_flexaccess\local\policy_presenter
  */
 final class policy_presenter_test extends \advanced_testcase {
     /**

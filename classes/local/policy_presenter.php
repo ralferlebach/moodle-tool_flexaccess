@@ -30,6 +30,8 @@ namespace tool_flexaccess\local;
 
 /**
  * Turns an effective policy into a flat, secret-free set of display values.
+ *
+ * @package    tool_flexaccess
  */
 final class policy_presenter {
     /**

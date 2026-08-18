@@ -17,6 +17,7 @@
 /**
  * Tests for tool_flexaccess reference-number query validation.
  *
+ * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -25,6 +26,9 @@ namespace tool_flexaccess;
 
 /**
  * Reference query tests.
+ *
+ * @package    tool_flexaccess
+ * @covers     \tool_flexaccess\local\reference_query
  */
 final class reference_query_test extends \advanced_testcase {
     /**

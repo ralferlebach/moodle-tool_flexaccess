@@ -17,6 +17,7 @@
 /**
  * Validation helper for administrative reference-number searches.
  *
+ * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -25,6 +26,8 @@ namespace tool_flexaccess\local;
 
 /**
  * Normalises administrator-entered FlexAccess reference numbers.
+ *
+ * @package    tool_flexaccess
  */
 final class reference_query {
     /**
