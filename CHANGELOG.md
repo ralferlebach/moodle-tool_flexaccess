@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.26 — 2026-08-18 — Paket A: Quick-Registration (allowquick)
+- Keine Codeaenderung.
+
 ## 0.1.25 — 2026-08-18 — CI-Fix (veraltete Behat-Datei)
 - Keine Codeaenderung.
 
