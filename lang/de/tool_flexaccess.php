@@ -36,6 +36,7 @@ $string['accountstate'] = 'Status';
 $string['accounttype'] = 'Typ';
 $string['accounttypeauthenticated'] = 'Authentifizierte Nutzer';
 $string['accounttypetemporary'] = 'Temporäre Nutzer';
+$string['authunavailable'] = 'Das Plugin auth_flexaccess ist nicht installiert, daher sind keine Kontodaten verfügbar.';
 $string['dashaccounts'] = 'Konten';
 $string['dashboard'] = 'Übersicht';
 $string['dashexpired'] = 'Abgelaufen';

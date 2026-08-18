@@ -37,6 +37,14 @@ $PAGE->set_heading(get_string('pluginname', 'tool_flexaccess'));
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('dashboard', 'tool_flexaccess'));
 
+// The dashboard aggregates data owned by the auth_flexaccess sibling plugin. If that plugin is not
+// installed (for example during isolated CI), degrade gracefully instead of throwing.
+if (!class_exists(\auth_flexaccess\api::class)) {
+    echo $OUTPUT->notification(get_string('authunavailable', 'tool_flexaccess'), 'warning');
+    echo $OUTPUT->footer();
+    return;
+}
+
 $stats = \auth_flexaccess\api::account_stats();
 $mail = \auth_flexaccess\api::mailqueue_summary();
 

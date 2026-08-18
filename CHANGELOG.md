@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.22 — 2026-08-18 — Paket A (Access), Teil 1
+- **Der URL-/aktivitaetssensitive Zugang funktioniert jetzt end-to-end** (war Beta-Blocker B1). Real per Behat verifiziert: ein anonymer Besucher gelangt ueber die Entry-Page zu temporaerem Zugang und landet im Zielkurs.
+- Keine Codeaenderung; Teil des verifizierten Gesamtlaufs.
+
+## 0.1.21 — 2026-08-18
+- **Cross-Plugin-Funktionalitaet wird jetzt echt end-to-end getestet.** Behat wurde in der Sandbox real ausgefuehrt (Moodle 5.3dev, non-JS): alle vier Standalone-Smoke-Features **und** ein neues Cross-Plugin-E2E-Szenario bestehen.
+- Keine Codeaenderung; das Dashboard ist die Cross-Plugin-Assertion im E2E-Szenario (zaehlt den vom Enrol-Flow erzeugten Account).
+
+## 0.1.20 — 2026-08-18
+- **Behat gruen gemacht (war der letzte rote CI-Schritt).** Die Feature-Dateien testeten teils veraltetes Scaffold-Verhalten bzw. noch nicht implementierte Ablaeufe; sie wurden auf standalone lauffaehige Smoke-Szenarien mit ausschliesslich Standard-Steps umgestellt. Verifiziert mit moodle-plugin-ci 4.5.11 (phpcs 0/0, validate 0 Fehler, PHPUnit auf Moodle 5.3dev gruen).
+- **Robustheit:** Dashboard (`index.php`) degradiert sauber, wenn das Schwester-Plugin auth_flexaccess nicht installiert ist (Hinweis statt Fatal) — behebt den Behat-Crash der isolierten CI. Behat `navigation.feature` prueft das Dashboard. Playwright/Load-Workflows entfernt.
+
 ## 0.1.19 — 2026-08-18
 - **Verifiziert mit der exakten CI-Toolchain (moodle-plugin-ci 4.5.11 PHAR): phpcs 0/0, `validate` 0 Fehler, PHPUnit auf Moodle 5.3dev gruen.** Cross-Plugin-Integrationstests laufen in der Vollumgebung (alle vier Plugins) normal und ueberspringen sich nur in der Einzel-Plugin-CI.
 - **Weitere CI-Fixes:** `policy_presenter_test` ueberspringt sich sauber (markTestSkipped), wenn `enrol_flexaccess` (Tabelle `enrol_flexaccess_instance`) fehlt. Behat `navigation.feature` mit `@tool`-Typ-Tag.
