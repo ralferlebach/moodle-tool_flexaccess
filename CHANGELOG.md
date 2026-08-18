@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.23 — 2026-08-18 — CI-Fixes
+- Keine Codeaenderung.
+
+## 0.1.23 — 2026-08-18 — Paket A (Access), Teil 2: Zugangsschlüssel
+- **Der Zugangsschlüssel ist jetzt wirksam** (war Sicherheits-Blocker B2). E2E per Behat verifiziert: falscher Schlüssel -> Fehler, richtiger -> Kurszugang.
+- Keine Codeaenderung; Teil des verifizierten Gesamtlaufs.
+
 ## 0.1.22 — 2026-08-18 — Paket A (Access), Teil 1
 - **Der URL-/aktivitaetssensitive Zugang funktioniert jetzt end-to-end** (war Beta-Blocker B1). Real per Behat verifiziert: ein anonymer Besucher gelangt ueber die Entry-Page zu temporaerem Zugang und landet im Zielkurs.
 - Keine Codeaenderung; Teil des verifizierten Gesamtlaufs.
