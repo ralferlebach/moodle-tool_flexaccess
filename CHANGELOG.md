@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.30 — 2026-08-18 — DRY: gemeinsame Identitaetsfelder der Formulare
+- Keine Codeaenderung.
+
 ## 0.1.29 — 2026-08-18 — Paket B: E-Mail-Verifikation der Persistierung (Option, Default an)
 - Keine Codeaenderung.
 
