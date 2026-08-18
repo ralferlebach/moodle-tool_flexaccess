@@ -1,4 +1,4 @@
-@tool_flexaccess
+@tool @tool_flexaccess
 Feature: FlexAccess administration scaffold
   Scenario: Administrator can open the FlexAccess dashboard
     Given I log in as "admin"
