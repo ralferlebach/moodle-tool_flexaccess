@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.34 — 2026-08-19 — Rate-Limiting der oeffentlichen Schreib-Endpoints (§5)
+- Keine Codeaenderung.
+
 ## 0.1.33 — 2026-08-19 — Enrolment-Expiry (§32/§33) + echte jmeter/playwright-Plaene (§26/§27)
 - Keine Codeaenderung.
 
