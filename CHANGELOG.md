@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.24 — 2026-08-18 — Paket A: B2 (Access-Key) verifiziert
+- **Access-Key-Durchsetzung end-to-end per Behat verifiziert** (Sicherheits-Blocker B2 geschlossen): Challenge-Formular, falscher Schluessel wird abgewiesen, korrekter Schluessel gewaehrt Zugang; Rate-Limit im Flow, Schluessel nur per POST (nie in URL/Log). 3 Ecosystem-Szenarien, 20 Steps gruen.
+- Keine Codeaenderung.
+
 ## 0.1.23 — 2026-08-18 — CI-Fixes
 - Keine Codeaenderung.
 
