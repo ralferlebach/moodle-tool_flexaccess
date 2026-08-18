@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.27 — 2026-08-18 — Paket A abgeschlossen: Methodenauswahl (Gast + Normallogin)
+- Keine Codeaenderung.
+
 ## 0.1.26 — 2026-08-18 — Paket A: Quick-Registration (allowquick)
 - Keine Codeaenderung.
 
