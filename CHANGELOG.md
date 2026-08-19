@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.35 — 2026-08-19 — DSGVO-Privacy-Provider (§11) + PHPDoc-Fixes
+- Keine Codeaenderung (Privacy bleibt `null_provider`).
+
+## 0.1.35 — 2026-08-19 — DSGVO-Datenschutz-Provider vervollstaendigt (§11)
+- Keine Codeaenderung (Provider bleibt korrekt `null_provider`: keine eigenen Tabellen).
+
 ## 0.1.34 — 2026-08-19 — Rate-Limiting der oeffentlichen Schreib-Endpoints (§5)
 - Keine Codeaenderung.
 
