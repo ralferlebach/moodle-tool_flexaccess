@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.39 — 2026-08-19 — Konfigurierbare Rate-Limits, Cleanup, i18n, Backup/Restore, CI-Härtung
+- **§37 i18n:** rohe Enum-Werte (Kontotyp/-status) werden in der Kontenliste jetzt ueber `account_labels` lokalisiert dargestellt statt als interne Rohwerte.
+- **§3 Cleanup:** ungenutzte Capability `tool/flexaccess:manageaccounts` entfernt.
+
 ## 0.1.38 — 2026-08-19 — Re-login-fähige Konversion, Transaktionen, Mailqueue-Limit, Referenzsuche (§7/§8/§13/§16/§36)
 - **§8:** Neue `convert.php` + `convert_form` verlangen die echte E-Mail des Nutzers und rufen `admin_convert` auf (Set-Password-Mail). Die Aktion in `accounts.php` verlinkt dorthin (statt Ein-Klick-Konversion ohne E-Mail).
 - **§36:** Sichtbares Such-Formular; `reference_query::normalise` wird jetzt genutzt (behebt zugleich toten Code), Referenznummern werden mitgesucht.

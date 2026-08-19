@@ -34,11 +34,6 @@ $capabilities = [
         'captype' => 'read', 'contextlevel' => CONTEXT_SYSTEM,
         'archetypes' => ['manager' => CAP_ALLOW],
     ],
-    'tool/flexaccess:manageaccounts' => [
-        'riskbitmask' => RISK_PERSONAL | RISK_DATALOSS,
-        'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,
-        'archetypes' => ['manager' => CAP_ALLOW],
-    ],
     'tool/flexaccess:convertaccounts' => [
         'riskbitmask' => RISK_PERSONAL,
         'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,

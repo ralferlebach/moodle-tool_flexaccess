@@ -84,7 +84,13 @@ foreach ($accounts as $account) {
         $url = new moodle_url('/admin/tool/flexaccess/convert.php', ['userid' => $account->userid]);
         $action = html_writer::link($url, get_string('accountconvert', 'tool_flexaccess'));
     }
-    $table->data[] = [s($fullname), s($account->email), s($account->accounttype), s($account->accountstate), $action];
+    $table->data[] = [
+        s($fullname),
+        s($account->email),
+        \tool_flexaccess\local\account_labels::type($account->accounttype),
+        \tool_flexaccess\local\account_labels::state($account->accountstate),
+        $action,
+    ];
 }
 
 if (empty($table->data)) {
