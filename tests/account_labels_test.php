@@ -17,8 +17,6 @@
 namespace tool_flexaccess;
 
 use tool_flexaccess\local\account_labels;
-use auth_flexaccess\local\account_type;
-use auth_flexaccess\local\account_state;
 
 /**
  * Tests for the account enum label helper.
@@ -37,14 +35,14 @@ final class account_labels_test extends \advanced_testcase {
     public function test_known_values_are_localised(): void {
         $this->assertSame(
             get_string('accounttype_temporary', 'tool_flexaccess'),
-            account_labels::type(account_type::TEMPORARY_USER)
+            account_labels::type('temporary user')
         );
         $this->assertSame(
             get_string('accountstate_active', 'tool_flexaccess'),
-            account_labels::state(account_state::ACTIVE)
+            account_labels::state('active')
         );
         // The label must differ from the raw stored value.
-        $this->assertNotSame(account_type::TEMPORARY_USER, account_labels::type(account_type::TEMPORARY_USER));
+        $this->assertNotSame('temporary user', account_labels::type('temporary user'));
     }
 
     /**

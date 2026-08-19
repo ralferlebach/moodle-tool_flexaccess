@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.4 — 2026-08-19 — CI-Härtung + Upgrade-Robustheit (Plugin-Isolation, PHPDoc, reset_role_capabilities)
+- **CI-Fix (Plugin-Isolation):** `account_labels` und der zugehoerige Test nutzen die stabilen Wire-Werte direkt statt der auth-Klassenkonstanten. Die tool-Testsuite laeuft damit isoliert (ohne auth) ohne "class not found"; in Produktion unveraendert.
+
 ## 0.9.3 — 2026-08-19 — Welle 3 Strom F: Quick-Registration neu spezifiziert (P0 #5)
 - Keine Codeaenderung.
 

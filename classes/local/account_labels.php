@@ -16,14 +16,13 @@
 
 namespace tool_flexaccess\local;
 
-use auth_flexaccess\local\account_type;
-use auth_flexaccess\local\account_state;
-
 /**
  * Maps FlexAccess account enum values to localised, human-readable labels.
  *
  * The stored enum values are internal identifiers; administrators should see translated labels
- * rather than raw values.
+ * rather than raw values. The literal keys below mirror auth_flexaccess\\local\\account_type and
+ * account_state; they are kept as literals so this admin tool's label mapping does not hard-depend
+ * on auth_flexaccess being installed (e.g. during isolated CI), while staying correct in production.
  *
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -38,8 +37,9 @@ final class account_labels {
      */
     public static function type(string $value): string {
         $map = [
-            account_type::TEMPORARY_USER => 'accounttype_temporary',
-            account_type::AUTHENTICATED_USER => 'accounttype_authenticated',
+            // Mirrors auth_flexaccess\local\account_type::TEMPORARY_USER / AUTHENTICATED_USER.
+            'temporary user' => 'accounttype_temporary',
+            'authenticated user' => 'accounttype_authenticated',
         ];
         return isset($map[$value]) ? get_string($map[$value], 'tool_flexaccess') : $value;
     }
@@ -52,11 +52,12 @@ final class account_labels {
      */
     public static function state(string $value): string {
         $map = [
-            account_state::EPHEMERAL => 'accountstate_ephemeral',
-            account_state::PROVISIONAL => 'accountstate_provisional',
-            account_state::ACTIVE => 'accountstate_active',
-            account_state::EXPIRED => 'accountstate_expired',
-            account_state::SUSPENDED => 'accountstate_suspended',
+            // Mirrors auth_flexaccess\local\account_state::* values.
+            'ephemeral' => 'accountstate_ephemeral',
+            'provisional' => 'accountstate_provisional',
+            'active' => 'accountstate_active',
+            'expired' => 'accountstate_expired',
+            'suspended' => 'accountstate_suspended',
         ];
         return isset($map[$value]) ? get_string($map[$value], 'tool_flexaccess') : $value;
     }
