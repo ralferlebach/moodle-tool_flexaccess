@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.37 — 2026-08-19 — Teilnehmerlisten-Sichtbarkeit durchgesetzt (§35, P0)
+- Keine Codeaenderung.
+
+## 0.1.36 — 2026-08-19 — Capacity-Race / verwaiste Accounts behoben (§18)
+- Keine Codeaenderung.
+
 ## 0.1.35 — 2026-08-19 — DSGVO-Privacy-Provider (§11) + PHPDoc-Fixes
 - Keine Codeaenderung (Privacy bleibt `null_provider`).
 
