@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.2 — 2026-08-19 — Welle 2: Retention/Deletion, zentraler Conversion-Guard, Temp-Restriktionen (P0 #9/#10/#6)
+- Keine Codeaenderung.
+
 ## 0.9.1 — 2026-08-19 — Welle 1: Token-Sicherheit + atomares Temp-Rate-Limit (P0 #1, #2)
 - Keine Codeaenderung.
 
