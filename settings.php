@@ -50,4 +50,10 @@ if ($hassiteconfig) {
         new moodle_url('/admin/tool/flexaccess/policies.php'),
         'tool/flexaccess:viewpolicies'
     ));
+    $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
+        'tool_flexaccess_managepolicies',
+        get_string('managepolicies', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/managepolicies.php'),
+        'tool/flexaccess:managepolicies'
+    ));
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.5 — 2026-08-19 — Welle 3 Strom E: administrierbare Kategorie-Policies (P0 #8) + Cleanup
+- **P0 #8 — Verwaltungs-UI:** neue capability-gesicherte Seite `managepolicies.php` (Kapability `tool/flexaccess:managepolicies`, RISK_CONFIG) mit Formular zum Setzen/Loeschen der Kategorie-Overrides (Tri-State Erben/Erlauben/Verweigern fuer die Zugangsmethoden, Lebensdauern, Teilnehmer-Sichtbarkeit) plus Uebersichtstabelle. Menueeintrag unter FlexAccess.
+- Tests: `category_policy` save/load/merge/delete (enrol).
+
 ## 0.9.4 — 2026-08-19 — CI-Härtung + Upgrade-Robustheit (Plugin-Isolation, PHPDoc, reset_role_capabilities)
 - **CI-Fix (Plugin-Isolation):** `account_labels` und der zugehoerige Test nutzen die stabilen Wire-Werte direkt statt der auth-Klassenkonstanten. Die tool-Testsuite laeuft damit isoliert (ohne auth) ohne "class not found"; in Produktion unveraendert.
 
