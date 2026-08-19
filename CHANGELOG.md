@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.3 — 2026-08-19 — Welle 3 Strom F: Quick-Registration neu spezifiziert (P0 #5)
+- Keine Codeaenderung.
+
 ## 0.9.2 — 2026-08-19 — Welle 2: Retention/Deletion, zentraler Conversion-Guard, Temp-Restriktionen (P0 #9/#10/#6)
 - Keine Codeaenderung.
 
