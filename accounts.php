@@ -31,7 +31,6 @@ $query = optional_param('q', '', PARAM_NOTAGS);
 $type = optional_param('type', '', PARAM_ALPHAEXT);
 $state = optional_param('state', '', PARAM_ALPHA);
 $page = optional_param('page', 0, PARAM_INT);
-$convert = optional_param('convert', 0, PARAM_INT);
 $perpage = 50;
 
 require_login();
@@ -40,6 +39,9 @@ require_capability('tool/flexaccess:viewaccounts', $context);
 
 $typefilter = $type !== '' ? $type : null;
 $statefilter = $state !== '' ? $state : null;
+// An all-digit query is also matched against reference numbers exactly.
+$reference = \tool_flexaccess\local\reference_query::normalise($query);
+$referencefilter = $reference !== '' ? $reference : null;
 
 $baseurl = new moodle_url(
     '/admin/tool/flexaccess/accounts.php',
@@ -52,25 +54,19 @@ $PAGE->set_pagelayout('admin');
 $PAGE->set_title(get_string('accounts', 'tool_flexaccess'));
 $PAGE->set_heading(get_string('pluginname', 'tool_flexaccess'));
 
-if ($convert > 0) {
-    require_sesskey();
-    require_capability('tool/flexaccess:convertaccounts', $context);
-    $done = \auth_flexaccess\api::admin_convert($convert);
-    $message = $done ? get_string('accountconverted', 'tool_flexaccess')
-        : get_string('accountnotconverted', 'tool_flexaccess');
-    redirect(
-        $baseurl,
-        $message,
-        null,
-        $done ? \core\output\notification::NOTIFY_SUCCESS : \core\output\notification::NOTIFY_INFO
-    );
-}
-
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('accounts', 'tool_flexaccess'));
 
-$total = \auth_flexaccess\api::count_accounts($query, $typefilter, $statefilter);
-$accounts = \auth_flexaccess\api::search_accounts($query, $typefilter, $statefilter, $page, $perpage);
+// Search box (matches e-mail, name and reference number).
+echo html_writer::start_tag('form', ['method' => 'get', 'action' => $baseurl->out_omit_querystring(), 'class' => 'mb-3']);
+echo html_writer::empty_tag('input', ['type' => 'text', 'name' => 'q', 'value' => $query,
+    'placeholder' => get_string('accountsearch', 'tool_flexaccess'), 'class' => 'form-control d-inline-block w-auto']);
+echo ' ' . html_writer::empty_tag('input', ['type' => 'submit', 'value' => get_string('search'),
+    'class' => 'btn btn-secondary']);
+echo html_writer::end_tag('form');
+
+$total = \auth_flexaccess\api::count_accounts($query, $typefilter, $statefilter, $referencefilter);
+$accounts = \auth_flexaccess\api::search_accounts($query, $typefilter, $statefilter, $page, $perpage, $referencefilter);
 $canconvert = has_capability('tool/flexaccess:convertaccounts', $context);
 
 $table = new html_table();
@@ -85,7 +81,7 @@ foreach ($accounts as $account) {
     $fullname = trim($account->firstname . ' ' . $account->lastname);
     $action = '';
     if ($canconvert && $account->accounttype === \auth_flexaccess\local\account_type::TEMPORARY_USER) {
-        $url = new moodle_url($baseurl, ['convert' => $account->userid, 'page' => $page, 'sesskey' => sesskey()]);
+        $url = new moodle_url('/admin/tool/flexaccess/convert.php', ['userid' => $account->userid]);
         $action = html_writer::link($url, get_string('accountconvert', 'tool_flexaccess'));
     }
     $table->data[] = [s($fullname), s($account->email), s($account->accounttype), s($account->accountstate), $action];
