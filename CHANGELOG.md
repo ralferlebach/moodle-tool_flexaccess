@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.9 — 2026-08-19 — Welle 4 Abschluss: Accessibility-Gate + Docs-SSOT & Traceability
+- Keine Codeaenderung.
+
+## 0.9.8 — 2026-08-19 — Welle 4: Policy-Caching (Perf)
+- Keine Codeaenderung.
+
 ## 0.9.7 — 2026-08-19 — Welle 5: Einladungskampagnen (§49)
 - **§49 — Campaign/Invitation:** neue tokenisierte Einladungskampagnen. Ein Admin erstellt teilbare Links, über die sich Personen per FlexAccess-Schnellregistrierung selbst in einen Kurs einschreiben.
 - **Datenmodell:** neue Tabelle `tool_flexaccess_campaign` (install.xml + Upgrade 2026081907) mit Name, Zielkurs, eindeutigem Token, Aktiv-Flag, Verfügbarkeitsfenster, Max-Einlösungen/Zähler und Kampagnen-Gate.
