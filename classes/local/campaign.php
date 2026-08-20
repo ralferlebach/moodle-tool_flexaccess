@@ -81,13 +81,25 @@ final class campaign {
     }
 
     /**
-     * All campaigns, newest first.
+     * A page of campaigns, newest first.
      *
+     * @param int $limitfrom Offset (0 = start).
+     * @param int $limitnum Page size (0 = no limit).
      * @return \stdClass[]
      */
-    public static function all(): array {
+    public static function all(int $limitfrom = 0, int $limitnum = 0): array {
         global $DB;
-        return $DB->get_records(self::TABLE, null, 'timecreated DESC');
+        return $DB->get_records(self::TABLE, null, 'timecreated DESC', '*', $limitfrom, $limitnum);
+    }
+
+    /**
+     * Total number of campaigns.
+     *
+     * @return int
+     */
+    public static function count_all(): int {
+        global $DB;
+        return $DB->count_records(self::TABLE);
     }
 
     /**

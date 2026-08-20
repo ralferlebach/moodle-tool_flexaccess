@@ -107,7 +107,10 @@ if ($editing) {
 echo html_writer::tag('p', get_string('campaigns_intro', 'tool_flexaccess'));
 echo $OUTPUT->single_button(new moodle_url($returnurl, ['action' => 'new']), get_string('campaignnew', 'tool_flexaccess'), 'get');
 
-$campaigns = campaign::all();
+$page = optional_param('page', 0, PARAM_INT);
+$perpage = 50;
+$totalcampaigns = campaign::count_all();
+$campaigns = campaign::all($page * $perpage, $perpage);
 if ($campaigns) {
     $table = new html_table();
     $table->head = [
@@ -139,6 +142,7 @@ if ($campaigns) {
         ];
     }
     echo html_writer::table($table);
+    echo $OUTPUT->paging_bar($totalcampaigns, $page, $perpage, $returnurl);
 } else {
     echo html_writer::tag('p', get_string('campaigns_none', 'tool_flexaccess'));
 }

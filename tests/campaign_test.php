@@ -150,4 +150,21 @@ final class campaign_test extends \advanced_testcase {
         $this->assertSame(0, (int) campaign::get($id)->redemptioncount);
         $this->assertTrue(campaign::redeem($id));
     }
+
+    /**
+     * all() paginates and count_all() totals.
+     *
+     * @return void
+     */
+    public function test_pagination_and_count(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        for ($i = 0; $i < 5; $i++) {
+            $this->make(['name' => 'C' . $i]);
+        }
+        $this->assertSame(5, campaign::count_all());
+        $this->assertCount(2, campaign::all(0, 2));
+        $this->assertCount(2, campaign::all(2, 2));
+        $this->assertCount(1, campaign::all(4, 2));
+    }
 }
