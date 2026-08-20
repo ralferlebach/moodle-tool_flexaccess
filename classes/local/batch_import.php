@@ -108,7 +108,7 @@ final class batch_import {
      * Convert the accounts described by $rows to permanent accounts with email confirmation.
      *
      * @param int $batchid Batch whose members these rows belong to.
-     * @param array<int,array<string,string>> $rows Parsed rows.
+     * @param array $rows Parsed rows (each: username, firstname, lastname, email, newusername).
      * @param string $usernamerule One of the RULE_* constants (used when a row has no new username).
      * @param int|null $now Current time.
      * @return array{converted:int, skipped:int, errors:array<int,string>} Summary; errors are human lines.
@@ -179,7 +179,7 @@ final class batch_import {
     /**
      * Decide the target username for a row: an explicit sheet value wins, else apply the rule.
      *
-     * @param array<string,string> $row Parsed row.
+     * @param array $row Parsed row.
      * @param string $rule One of the RULE_* constants.
      * @return string Desired username ('' to leave as the email).
      */

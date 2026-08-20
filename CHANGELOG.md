@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.22 — 2026-08-20 — Fix: PHPDoc-Checker (CI) — @param-Vollstaendigkeit
+- **Fix (CI PHPDoc):** Der Moodle-PHPDoc-Checker erkennt generische Array-Typen (`array<...>`, `array{...}`) in `@param` nicht und meldete daher "incomplete parameters list" fuer `batch_export::excel/pdf_list/login_cards`, `batch_import::convert/target_username`. Diese `@param`-Typen auf `array` vereinfacht (Form in der Beschreibung erhalten). Zusaetzlich `invitation::queue_mail`: fehlender `@param $token` ergaenzt (Signatur hat 5 Parameter, Docblock hatte 4). Verwaisten doppelten Docblock vor `invitation::reserve()` entfernt. Keine Logikaenderung.
+
 ## 0.9.21 — 2026-08-20 — Feature: Excel-Rückkonversion von Stapel-Accounts (Kampagne, Teil 2)
 - **Neu (Kampagne, Teil 2):** Rückkonversion aus dem ausgefüllten Export. Neuer Service `local\batch_import` (`parse()` liest die hochgeladene .xlsx via PhpSpreadsheet; `convert()` ordnet jede Zeile über die ursprüngliche Nutzerkennung dem Stapel-Mitglied zu, personalisiert Vorname/Nachname/E-Mail und wandelt den Account zu einem vollwertigen, dauerhaften Account um — inkl. Passwort-setzen-Mail an die neue Adresse als E-Mail-Konfirmation). Nutzerkennungs-Änderung per Excel (optionale Spalte fuer die neue Nutzerkennung, Vorrang) ODER per Regel (E-Mail / erzeugte Kennung behalten / lokaler E-Mail-Teil / vorname.nachname). Zeilen ohne Treffer/E-Mail werden mit Meldung übersprungen. Neue Seite `batchconvert.php` (+ `batch_convert_form` mit Filepicker + Regel-Auswahl), verlinkt von der Stapel-Ansicht. Excel-Export um die optionale Spalte fuer die neue Nutzerkennung erweitert.
 

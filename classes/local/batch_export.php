@@ -34,7 +34,7 @@ final class batch_export {
      * Build the XLSX bytes: username, password, (empty) first name, last name, email, profile fields.
      *
      * @param \stdClass $batch Batch record.
-     * @param array<string,string> $credentials username => plain password.
+     * @param array $credentials Map of username => plain password.
      * @return string Binary XLSX content.
      */
     public static function excel(\stdClass $batch, array $credentials): string {
@@ -88,7 +88,7 @@ final class batch_export {
      * columns to fill by hand.
      *
      * @param \stdClass $batch Batch record.
-     * @param array<string,string> $credentials username => plain password.
+     * @param array $credentials Map of username => plain password.
      * @return string Binary PDF content.
      */
     public static function pdf_list(\stdClass $batch, array $credentials): string {
@@ -133,7 +133,7 @@ final class batch_export {
      * Build printable login cards (8 per A4 page): username, password, course URL and a QR code.
      *
      * @param \stdClass $batch Batch record.
-     * @param array<string,string> $credentials username => plain password.
+     * @param array $credentials Map of username => plain password.
      * @param string $courseurl Absolute course/login URL for the QR code and caption.
      * @return string Binary PDF content.
      */

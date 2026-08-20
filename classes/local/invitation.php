@@ -239,16 +239,6 @@ final class invitation {
     }
 
     /**
-     * Atomically accept (consume) an invitation by token.
-     *
-     * A per-token lock plus a status guard guarantee single use: a second concurrent acceptance of
-     * the same token fails. Returns the invitation on success, or null when it is not acceptable.
-     *
-     * @param string $token Invitation token.
-     * @param int|null $now Current time.
-     * @return \stdClass|null The consumed invitation, or null.
-     */
-    /**
      * Reserve an invitation for a registration attempt (reserve-before-grant).
      *
      * Under a per-invitation lock, an acceptable invitation is moved to RESERVED so concurrent
@@ -369,6 +359,7 @@ final class invitation {
      * cross-plugin coupling stays behind the sanctioned boundary and honours the queue's rate limit.
      *
      * @param \stdClass $invite Invitation record.
+     * @param string $token The single-use token rendered into the acceptance link.
      * @param string $subjectkey Lang key for the subject.
      * @param string $bodykey Lang key for the body (receives the link).
      * @param int $now Current time.
