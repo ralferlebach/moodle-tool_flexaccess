@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.15 — 2026-08-20 — RC-Gates (Review 0.9.13): 4 P0 + Reliability + Doku/CI-Sync
+- Campaign- und Invite-Landing rufen Quick-Registration jetzt als **trusted** auf (Kurs-Gate wird nicht doppelt geprueft).
+
 ## 0.9.14 — 2026-08-20 — Einladungen: personengebundenes Single-Use-Modell (Review §9)
 - **Invitations:** neues personengebundenes Einladungsmodell (`tool_flexaccess_invite`, install.xml + Upgrade 2026081914) als Ergaenzung zum teilbaren Campaign-Link. Service `local\invitation`: create/get/all(paginiert)/count, `send`/`remind`/`revoke`, **atomares single-use `accept`** (per-Token-Lock + Statusguard), `is_acceptable` (pending + nicht abgelaufen + nicht widerrufen) und `due_reminders`.
 - **Mail via Queue:** Einladungs- und Erinnerungsmails laufen ueber die FlexAccess-Mailqueue (Ratelimit gilt).
