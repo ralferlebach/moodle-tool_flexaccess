@@ -58,4 +58,9 @@ $capabilities = [
         'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,
         'archetypes' => ['manager' => CAP_ALLOW],
     ],
+    'tool/flexaccess:manageinvitations' => [
+        'riskbitmask' => RISK_SPAM | RISK_PERSONAL,
+        'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => ['manager' => CAP_ALLOW],
+    ],
 ];

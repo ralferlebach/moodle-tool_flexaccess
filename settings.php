@@ -62,4 +62,10 @@ if ($hassiteconfig) {
         new moodle_url('/admin/tool/flexaccess/campaigns.php'),
         'tool/flexaccess:managecampaigns'
     ));
+    $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
+        'tool_flexaccess_invitations',
+        get_string('invitations', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/invitations.php'),
+        'tool/flexaccess:manageinvitations'
+    ));
 }

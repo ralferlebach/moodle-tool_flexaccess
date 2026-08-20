@@ -43,6 +43,9 @@ final class provider implements
     /** Campaign table. */
     private const TABLE = 'tool_flexaccess_campaign';
 
+    /** Invitation table. */
+    private const INVITE_TABLE = 'tool_flexaccess_invite';
+
     /**
      * Describe the personal data stored by this plugin.
      *
@@ -55,6 +58,11 @@ final class provider implements
             'name' => 'privacy:metadata:campaign:name',
             'timemodified' => 'privacy:metadata:campaign:timemodified',
         ], 'privacy:metadata:campaign');
+        $collection->add_database_table(self::INVITE_TABLE, [
+            'usermodified' => 'privacy:metadata:invite:usermodified',
+            'email' => 'privacy:metadata:invite:email',
+            'timecreated' => 'privacy:metadata:invite:timecreated',
+        ], 'privacy:metadata:invite');
         return $collection;
     }
 
@@ -67,7 +75,12 @@ final class provider implements
     public static function get_contexts_for_userid(int $userid): contextlist {
         global $DB;
         $contextlist = new contextlist();
-        if ($DB->record_exists(self::TABLE, ['usermodified' => $userid])) {
+        $email = (string) $DB->get_field('user', 'email', ['id' => $userid]);
+        if (
+            $DB->record_exists(self::TABLE, ['usermodified' => $userid])
+                || $DB->record_exists(self::INVITE_TABLE, ['usermodified' => $userid])
+                || ($email !== '' && $DB->record_exists(self::INVITE_TABLE, ['email' => $email]))
+        ) {
             $contextlist->add_system_context();
         }
         return $contextlist;
@@ -84,9 +97,11 @@ final class provider implements
         if (!$userlist->get_context() instanceof \context_system) {
             return;
         }
-        $userids = $DB->get_fieldset_select(self::TABLE, 'DISTINCT usermodified', 'usermodified <> 0');
-        if ($userids) {
-            $userlist->add_users(array_map('intval', $userids));
+        foreach ([self::TABLE, self::INVITE_TABLE] as $table) {
+            $userids = $DB->get_fieldset_select($table, 'DISTINCT usermodified', 'usermodified <> 0');
+            if ($userids) {
+                $userlist->add_users(array_map('intval', $userids));
+            }
         }
     }
 
@@ -113,6 +128,23 @@ final class provider implements
                     ]
                 );
             }
+            $email = (string) $DB->get_field('user', 'email', ['id' => $userid]);
+            $invites = $DB->get_records_select(
+                self::INVITE_TABLE,
+                'usermodified = :uid' . ($email !== '' ? ' OR email = :email' : ''),
+                $email !== '' ? ['uid' => $userid, 'email' => $email] : ['uid' => $userid],
+                'timecreated ASC'
+            );
+            foreach ($invites as $invite) {
+                writer::with_context($context)->export_data(
+                    ['tool_flexaccess', 'invitation', (string) $invite->id],
+                    (object) [
+                        'email' => $invite->email,
+                        'status' => $invite->status,
+                        'timecreated' => \core_privacy\local\request\transform::datetime((int) $invite->timecreated),
+                    ]
+                );
+            }
         }
     }
 
@@ -129,6 +161,7 @@ final class provider implements
         global $DB;
         if ($context instanceof \context_system) {
             $DB->set_field_select(self::TABLE, 'usermodified', 0, 'usermodified <> 0');
+            $DB->set_field_select(self::INVITE_TABLE, 'usermodified', 0, 'usermodified <> 0');
         }
     }
 
@@ -141,9 +174,14 @@ final class provider implements
     public static function delete_data_for_user(approved_contextlist $contextlist): void {
         global $DB;
         $userid = (int) $contextlist->get_user()->id;
+        $email = (string) $DB->get_field('user', 'email', ['id' => $userid]);
         foreach ($contextlist->get_contexts() as $context) {
             if ($context instanceof \context_system) {
                 $DB->set_field(self::TABLE, 'usermodified', 0, ['usermodified' => $userid]);
+                $DB->set_field(self::INVITE_TABLE, 'usermodified', 0, ['usermodified' => $userid]);
+                if ($email !== '') {
+                    $DB->set_field(self::INVITE_TABLE, 'email', '', ['email' => $email]);
+                }
             }
         }
     }
@@ -165,5 +203,10 @@ final class provider implements
         }
         [$insql, $params] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
         $DB->set_field_select(self::TABLE, 'usermodified', 0, "usermodified $insql", $params);
+        $DB->set_field_select(self::INVITE_TABLE, 'usermodified', 0, "usermodified $insql", $params);
+        $emails = $DB->get_fieldset_select('user', 'email', "id $insql", $params);
+        foreach (array_filter($emails) as $email) {
+            $DB->set_field(self::INVITE_TABLE, 'email', '', ['email' => $email]);
+        }
     }
 }

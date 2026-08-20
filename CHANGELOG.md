@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.14 — 2026-08-20 — Einladungen: personengebundenes Single-Use-Modell (Review §9)
+- **Invitations:** neues personengebundenes Einladungsmodell (`tool_flexaccess_invite`, install.xml + Upgrade 2026081914) als Ergaenzung zum teilbaren Campaign-Link. Service `local\invitation`: create/get/all(paginiert)/count, `send`/`remind`/`revoke`, **atomares single-use `accept`** (per-Token-Lock + Statusguard), `is_acceptable` (pending + nicht abgelaufen + nicht widerrufen) und `due_reminders`.
+- **Mail via Queue:** Einladungs- und Erinnerungsmails laufen ueber die FlexAccess-Mailqueue (Ratelimit gilt).
+- **UI:** capability-gesicherte Verwaltung `invitations.php` (`tool/flexaccess:manageinvitations`, RISK_SPAM|RISK_PERSONAL) mit Bulk-Anlage (`invitation_form`, mehrere Empfaenger + optionales Ablaufdatum + Sofortversand) und Aktionen Send/Resend/Remind/Revoke; oeffentliche Landing `invite.php?token=` konsumiert das Token, bindet die Registrierung an die Einladungs-E-Mail und loest erst bei erfolgreicher Kontoerstellung ein.
+- **Reminder-Task:** `send_invitation_reminders` (db/tasks.php, taeglich) erinnert offene, gesendete, nicht angenommene Einladungen einmalig nach `invitationreminderdays` (Default 3, 0 = aus).
+- **Privacy:** Provider um die invite-Tabelle erweitert (E-Mail + usermodified als personenbezogene Daten deklariert, exportiert — inkl. an die eigene Adresse gerichteter Einladungen —, bei Loeschung anonymisiert).
+- Tests: Lebenszyklus, Expiry/Revoke, send/remind, single-use accept, due-reminders.
+
 ## 0.9.13 — 2026-08-20 — P2-Batch: Performance, Retention, Supply-Chain, Doku
 - **Perf:** `campaign::all()` paginiert (`limitfrom`/`limitnum`) + `count_all()`; die Admin-Kampagnenliste nutzt eine `paging_bar` (50/Seite). Test deckt Paginierung/Zaehlung ab.
 
