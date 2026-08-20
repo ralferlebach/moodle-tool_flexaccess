@@ -56,4 +56,10 @@ if ($hassiteconfig) {
         new moodle_url('/admin/tool/flexaccess/managepolicies.php'),
         'tool/flexaccess:managepolicies'
     ));
+    $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
+        'tool_flexaccess_campaigns',
+        get_string('campaigns', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/campaigns.php'),
+        'tool/flexaccess:managecampaigns'
+    ));
 }
