@@ -35,10 +35,14 @@ final class invitation_form extends \moodleform {
      */
     protected function definition(): void {
         $mform = $this->_form;
-        $courses = (array) ($this->_customdata['courses'] ?? []);
 
-        $mform->addElement('select', 'courseid', get_string('invite:course', 'tool_flexaccess'), $courses);
-        $mform->setType('courseid', PARAM_INT);
+        // A searchable, AJAX-backed course selector scales to sites with very many courses.
+        $mform->addElement(
+            'course',
+            'courseid',
+            get_string('invite:course', 'tool_flexaccess'),
+            ['multiple' => false]
+        );
         $mform->addRule('courseid', get_string('required'), 'required', null, 'client');
 
         $mform->addElement(

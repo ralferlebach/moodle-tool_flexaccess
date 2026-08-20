@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.17 — 2026-08-20 — Fix: Cross-Plugin-Mailqueue (Standalone-CI) + saubere API-Grenze
+- **Fix (Standalone-CI):** Der Invitation-Service schrieb Mails per Raw-Insert direkt in `auth_flexaccess_mailqueue`. In einer isolierten tool-CI (ohne installiertes `auth_flexaccess`) fehlte diese Tabelle -> zwei PHPUnit-Errors. Behoben durch:
+  - **Saubere API-Grenze:** Versand laeuft jetzt ueber die oeffentliche `\auth_flexaccess\api::queue_mail()` (statt Direktzugriff auf die fremde Tabelle); der tote Raw-Insert wurde entfernt.
+  - **Ehrlicher Test-Skip:** mail-abhaengige Tests (`test_send_and_remind`, `test_due_reminders`) ueberspringen sauber, wenn `auth_flexaccess`/die Mailqueue nicht installiert ist (Isolationslauf), statt zu erroren.
+  - **CI-Contract:** die tool-eigene `moodle-ci.yml` (PHPUnit + Behat) installiert jetzt die deklarierten Schwestern `auth`+`enrol` via pinbarem `SIBLING_REF`, sodass der Mailpfad in CI real getestet wird.
+
+## 0.9.16 — 2026-08-20 — P2-Cleanup: Performance, Reliability, i18n
+- **Perf (§15):** Campaign- und Invitation-Formular verwenden jetzt das AJAX-gestuetzte `course`-Autocomplete-Element statt eines `<select>` ueber *alle* Kurse; die Verwaltungsseiten laden Kurs-Anzeigenamen nur noch fuer die aktuell angezeigte Seite (skaliert auf 10.000+ Kurse).
+- **i18n (§20):** Participant-Visibility-Enums ('show'/'hide'/'inherit') werden ueber `policy_presenter::visibility_label()` lokalisiert ausgegeben statt als Rohwert (neuer String `policyvisibilityinherit`).
+
 ## 0.9.15 — 2026-08-20 — RC-Gates (Review 0.9.13): 4 P0 + Reliability + Doku/CI-Sync
 - Campaign- und Invite-Landing rufen Quick-Registration jetzt als **trusted** auf (Kurs-Gate wird nicht doppelt geprueft).
 

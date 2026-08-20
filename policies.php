@@ -64,7 +64,10 @@ if ($courseid > 0 && class_exists('\\enrol_flexaccess\\api')) {
         [get_string('policyavailablefrom', 'tool_flexaccess'), $time($summary['availablefrom'])],
         [get_string('policyavailableuntil', 'tool_flexaccess'), $time($summary['availableuntil'])],
         [get_string('policymaxparticipants', 'tool_flexaccess'), $cap],
-        [get_string('policyvisibility', 'tool_flexaccess'), s($summary['participantvisibility'])],
+        [
+            get_string('policyvisibility', 'tool_flexaccess'),
+            s(\tool_flexaccess\local\policy_presenter::visibility_label($summary['participantvisibility'])),
+        ],
         [get_string('policyaccesskeyscope', 'tool_flexaccess'), s($summary['accesskeyscope'])],
     ];
 

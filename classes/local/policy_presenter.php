@@ -55,4 +55,19 @@ final class policy_presenter {
             'accesskeyscope' => (string) $policy->temporaryaccesskeyscope,
         ];
     }
+
+    /**
+     * Localised label for a participant-visibility enum value ('show'/'hide'/'inherit').
+     *
+     * @param string $value Stored enum value.
+     * @return string Human-readable label.
+     */
+    public static function visibility_label(string $value): string {
+        $keys = [
+            'show' => 'policyvisibilityshow',
+            'hide' => 'policyvisibilityhide',
+            'inherit' => 'policyvisibilityinherit',
+        ];
+        return isset($keys[$value]) ? get_string($keys[$value], 'tool_flexaccess') : $value;
+    }
 }

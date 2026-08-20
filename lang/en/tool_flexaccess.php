@@ -177,6 +177,7 @@ $string['policyunlimited'] = 'Unlimited';
 $string['policyvalue'] = 'Value';
 $string['policyvisibility'] = 'Participant-list visibility';
 $string['policyvisibilityhide'] = 'Hide';
+$string['policyvisibilityinherit'] = 'Inherit';
 $string['policyvisibilityshow'] = 'Show';
 $string['privacy:metadata'] = 'The administration tool stores no personal data of its own. Personal data remains with the owning FlexAccess plugins.';
 $string['privacy:metadata:campaign'] = 'Information about FlexAccess invitation campaigns.';

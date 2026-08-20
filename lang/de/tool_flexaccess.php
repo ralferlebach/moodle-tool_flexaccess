@@ -177,6 +177,7 @@ $string['policyunlimited'] = 'Unbegrenzt';
 $string['policyvalue'] = 'Wert';
 $string['policyvisibility'] = 'Teilnehmerlisten-Sichtbarkeit';
 $string['policyvisibilityhide'] = 'Verbergen';
+$string['policyvisibilityinherit'] = 'Erben';
 $string['policyvisibilityshow'] = 'Anzeigen';
 $string['privacy:metadata'] = 'Das Administrationstool speichert keine eigenen personenbezogenen Daten. Personenbezogene Daten verbleiben in den fachlich zuständigen FlexAccess-Plugins.';
 $string['privacy:metadata:campaign'] = 'Informationen zu FlexAccess-Einladungskampagnen.';

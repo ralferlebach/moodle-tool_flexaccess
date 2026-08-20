@@ -41,6 +41,22 @@ final class invitation_test extends \advanced_testcase {
     }
 
     /**
+     * Skip a test that needs the auth_flexaccess mail queue when that plugin is not installed
+     * (e.g. when this plugin's suite is run in isolation without its declared dependency).
+     *
+     * @return void
+     */
+    private function require_auth_queue(): void {
+        global $DB;
+        if (
+            !class_exists('\\auth_flexaccess\\api')
+                || !$DB->get_manager()->table_exists('auth_flexaccess_mailqueue')
+        ) {
+            $this->markTestSkipped('auth_flexaccess (mail queue) is not installed.');
+        }
+    }
+
+    /**
      * Create, look up by token, and acceptability of a fresh invitation.
      *
      * @return void
@@ -80,6 +96,7 @@ final class invitation_test extends \advanced_testcase {
      * @return void
      */
     public function test_send_and_remind(): void {
+        $this->require_auth_queue();
         global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
@@ -123,6 +140,7 @@ final class invitation_test extends \advanced_testcase {
      * @return void
      */
     public function test_due_reminders(): void {
+        $this->require_auth_queue();
         $this->resetAfterTest();
         $this->setAdminUser();
         $now = 10000000;

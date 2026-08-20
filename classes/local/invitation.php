@@ -261,6 +261,9 @@ final class invitation {
     /**
      * Queue an invitation mail (rendered with the acceptance link) through the FlexAccess queue.
      *
+     * Uses the auth_flexaccess public mail API rather than writing to its table directly, so the
+     * cross-plugin coupling stays behind the sanctioned boundary and honours the queue's rate limit.
+     *
      * @param \stdClass $invite Invitation record.
      * @param string $subjectkey Lang key for the subject.
      * @param string $bodykey Lang key for the body (receives the link).
@@ -268,22 +271,15 @@ final class invitation {
      * @return void
      */
     private static function queue_mail(\stdClass $invite, string $subjectkey, string $bodykey, int $now): void {
-        global $DB;
+        if (!class_exists('\auth_flexaccess\api')) {
+            // The auth plugin (a declared dependency) is not available; nothing can be queued.
+            return;
+        }
         $link = (new \moodle_url('/admin/tool/flexaccess/invite.php', ['token' => $invite->token]))->out(false);
         $subject = get_string($subjectkey, 'tool_flexaccess');
         $body = get_string($bodykey, 'tool_flexaccess', $link);
         $bodyhtml = \html_writer::tag('p', get_string($bodykey, 'tool_flexaccess', \html_writer::link($link, $link)));
-        $DB->insert_record('auth_flexaccess_mailqueue', (object) [
-            'userid' => 0,
-            'recipient' => $invite->email,
-            'mailtype' => 'invite',
-            'payloadjson' => json_encode(['subject' => $subject, 'body' => $body, 'bodyhtml' => $bodyhtml]),
-            'status' => 'queued',
-            'attempts' => 0,
-            'timecreated' => $now,
-            'nextrun' => $now,
-            'timesent' => null,
-        ]);
+        \auth_flexaccess\api::queue_mail(null, $invite->email, $subject, $body, $bodyhtml, 'invite', $now);
     }
 
     /**

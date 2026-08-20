@@ -110,7 +110,7 @@ if ($overrides) {
             $flagword((int) $row->allowtemporary),
             $flagword((int) $row->allowquick),
             $flagword((int) $row->allowguest),
-            s($row->participantvisibility),
+            s(\tool_flexaccess\local\policy_presenter::visibility_label($row->participantvisibility)),
             $actions,
         ];
     }

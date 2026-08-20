@@ -148,9 +148,24 @@ jobs:
           composer create-project -n --no-dev moodlehq/moodle-plugin-ci ci ${{ env.MOODLE_CI }}
           echo "$GITHUB_WORKSPACE/ci/bin"        >> "$GITHUB_PATH"
           echo "$GITHUB_WORKSPACE/ci/vendor/bin" >> "$GITHUB_PATH"
+      - name: Check out sibling FlexAccess plugins (declared dependencies)
+        run: |
+          # tool_flexaccess declares hard version.php dependencies on auth+enrol (the invitation and
+          # campaign mail path uses the auth mail queue). Pin SIBLING_REF to the matching release
+          # tag/SHA for a reproducible build (defaults to main).
+          SIBLING_REF="${SIBLING_REF:-main}"
+          mkdir -p "$HOME/extra-plugins"
+          for sib in auth enrol; do
+            git clone --depth 1 --branch "$SIBLING_REF" \
+              "https://github.com/ralferlebach/moodle-${sib}_flexaccess.git" \
+              "$HOME/extra-plugins/${sib}_flexaccess" \
+              || git clone --depth 1 \
+              "https://github.com/ralferlebach/moodle-${sib}_flexaccess.git" \
+              "$HOME/extra-plugins/${sib}_flexaccess"
+          done
       - name: Install Moodle and plugin
         run: |
-          moodle-plugin-ci install --plugin ./plugin \
+          moodle-plugin-ci install --plugin ./plugin --extra-plugins "$HOME/extra-plugins" \
             --db-host 127.0.0.1 --db-port ${{ matrix.db.port }} \
             --db-user ${{ matrix.db.user }} --db-pass ${{ matrix.db.pass }} --db-name moodle
         env:
@@ -197,9 +212,22 @@ jobs:
           composer create-project -n --no-dev moodlehq/moodle-plugin-ci ci ${{ env.MOODLE_CI }}
           echo "$GITHUB_WORKSPACE/ci/bin"        >> "$GITHUB_PATH"
           echo "$GITHUB_WORKSPACE/ci/vendor/bin" >> "$GITHUB_PATH"
+      - name: Check out sibling FlexAccess plugins (declared dependencies)
+        run: |
+          SIBLING_REF="${SIBLING_REF:-main}"
+          mkdir -p "$HOME/extra-plugins"
+          for sib in auth enrol; do
+            git clone --depth 1 --branch "$SIBLING_REF" \
+              "https://github.com/ralferlebach/moodle-${sib}_flexaccess.git" \
+              "$HOME/extra-plugins/${sib}_flexaccess" \
+              || git clone --depth 1 \
+              "https://github.com/ralferlebach/moodle-${sib}_flexaccess.git" \
+              "$HOME/extra-plugins/${sib}_flexaccess"
+          done
       - name: Install Moodle and plugin
         run: |
-          moodle-plugin-ci install --plugin ./plugin --branch ${{ matrix.moodle }} \
+          moodle-plugin-ci install --plugin ./plugin --extra-plugins "$HOME/extra-plugins" \
+            --branch ${{ matrix.moodle }} \
             --db-type mariadb --db-host 127.0.0.1 --db-port 3306 \
             --db-user root --db-pass root --db-name moodle
         env:

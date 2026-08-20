@@ -46,17 +46,9 @@ if ($action === 'delete' && $id > 0 && confirm_sesskey()) {
     redirect($returnurl, get_string('campaigndeleted', 'tool_flexaccess'), null, \core\output\notification::NOTIFY_SUCCESS);
 }
 
-$courses = [];
-foreach (get_courses('all', 'c.sortorder ASC', 'c.id, c.fullname') as $course) {
-    if ($course->id != SITEID) {
-        $courses[$course->id] = format_string($course->fullname);
-    }
-}
-
 $editing = ($action === 'edit' || $action === 'new');
 $form = new \tool_flexaccess\form\campaign_form(
-    new moodle_url($returnurl, ['action' => $action, 'id' => $id]),
-    ['courses' => $courses]
+    new moodle_url($returnurl, ['action' => $action, 'id' => $id])
 );
 
 if ($action === 'edit' && $id > 0 && ($campaign = campaign::get($id))) {
@@ -112,6 +104,11 @@ $perpage = 50;
 $totalcampaigns = campaign::count_all();
 $campaigns = campaign::all($page * $perpage, $perpage);
 if ($campaigns) {
+    // Look up display names only for the courses shown on this page.
+    $courseids = array_values(array_unique(array_map(static fn($c) => (int) $c->courseid, $campaigns)));
+    $courses = $courseids
+        ? $DB->get_records_list('course', 'id', $courseids, '', 'id, fullname')
+        : [];
     $table = new html_table();
     $table->head = [
         get_string('campaignname', 'tool_flexaccess'),
@@ -134,7 +131,9 @@ if ($campaigns) {
             . html_writer::link($deleteurl, get_string('delete'));
         $table->data[] = [
             format_string($campaign->name),
-            $courses[$campaign->courseid] ?? ('#' . $campaign->courseid),
+            isset($courses[$campaign->courseid])
+                ? format_string($courses[$campaign->courseid]->fullname)
+                : ('#' . $campaign->courseid),
             $status,
             $count,
             html_writer::link($link, get_string('campaigncopylink', 'tool_flexaccess')),

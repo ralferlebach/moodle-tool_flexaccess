@@ -35,7 +35,6 @@ final class campaign_form extends \moodleform {
      */
     protected function definition(): void {
         $mform = $this->_form;
-        $courses = (array) ($this->_customdata['courses'] ?? []);
 
         $mform->addElement('hidden', 'id');
         $mform->setType('id', PARAM_INT);
@@ -44,8 +43,13 @@ final class campaign_form extends \moodleform {
         $mform->setType('name', PARAM_TEXT);
         $mform->addRule('name', get_string('required'), 'required', null, 'client');
 
-        $mform->addElement('select', 'courseid', get_string('campaigncourse', 'tool_flexaccess'), $courses);
-        $mform->setType('courseid', PARAM_INT);
+        // A searchable, AJAX-backed course selector scales to sites with very many courses.
+        $mform->addElement(
+            'course',
+            'courseid',
+            get_string('campaigncourse', 'tool_flexaccess'),
+            ['multiple' => false]
+        );
         $mform->addRule('courseid', get_string('required'), 'required', null, 'client');
 
         $mform->addElement('advcheckbox', 'enabled', get_string('campaignenabled', 'tool_flexaccess'));

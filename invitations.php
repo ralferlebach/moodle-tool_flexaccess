@@ -71,16 +71,8 @@ if (in_array($action, ['send', 'remind', 'revoke'], true) && $id > 0 && confirm_
     }
 }
 
-$courses = [];
-foreach (get_courses('all', 'c.sortorder ASC', 'c.id, c.fullname') as $course) {
-    if ($course->id != SITEID) {
-        $courses[$course->id] = format_string($course->fullname);
-    }
-}
-
 $form = new \tool_flexaccess\form\invitation_form(
-    new moodle_url($returnurl, ['action' => 'new']),
-    ['courses' => $courses]
+    new moodle_url($returnurl, ['action' => 'new'])
 );
 
 if ($action === 'new') {
@@ -128,6 +120,11 @@ echo $OUTPUT->single_button(
 $total = invitation::count_all();
 $invites = invitation::all($page * $perpage, $perpage);
 if ($invites) {
+    // Look up display names only for the courses shown on this page.
+    $courseids = array_values(array_unique(array_map(static fn($i) => (int) $i->courseid, $invites)));
+    $courses = $courseids
+        ? $DB->get_records_list('course', 'id', $courseids, '', 'id, fullname')
+        : [];
     $statuslabels = [
         invitation::STATUS_PENDING => get_string('invite:status_pending', 'tool_flexaccess'),
         invitation::STATUS_ACCEPTED => get_string('invite:status_accepted', 'tool_flexaccess'),
@@ -165,7 +162,9 @@ if ($invites) {
         $sent = (int) $invite->timesent > 0 ? userdate((int) $invite->timesent) : '-';
         $table->data[] = [
             s($invite->email),
-            $courses[$invite->courseid] ?? ('#' . $invite->courseid),
+            isset($courses[$invite->courseid])
+                ? format_string($courses[$invite->courseid]->fullname)
+                : ('#' . $invite->courseid),
             $statuslabels[$invite->status] ?? $invite->status,
             $sent,
             implode(' · ', $actions),
