@@ -78,6 +78,10 @@ if ($form->is_cancelled()) {
     $accesspassword = (string) ($data->accesspassword ?? '');
     if (!campaign::passes_gate($campaign, (string) $data->email, $accesspassword)) {
         $failure = 'campaignbadgate';
+    } else if (!campaign::redeem((int) $campaign->id)) {
+        // Reserve a slot BEFORE creating any account, so a race for the last slot cannot
+        // over-grant. No slot available (cap reached or window/enabled changed).
+        $failure = 'campaignunavailable';
     } else {
         $result = \enrol_flexaccess\local\access_controller::grant_quick_registration((int) $campaign->courseid, (object) [
             'email' => $data->email,
@@ -87,8 +91,6 @@ if ($form->is_cancelled()) {
             'accesspassword' => '',
         ], getremoteaddr());
         if ($result->status === 'granted' || $result->status === 'verificationsent') {
-            // Record the redemption only for a successful sign-up.
-            campaign::redeem((int) $campaign->id);
             $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);
             complete_user_login($user);
             $message = $result->status === 'verificationsent'
@@ -96,6 +98,8 @@ if ($form->is_cancelled()) {
                 : get_string('register:success', 'auth_flexaccess');
             redirect($courseurl, $message);
         }
+        // Sign-up failed after reserving: give the slot back.
+        campaign::release_reservation((int) $campaign->id);
         $failure = 'access:' . $result->status;
     }
 }

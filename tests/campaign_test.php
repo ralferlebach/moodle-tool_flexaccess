@@ -132,4 +132,22 @@ final class campaign_test extends \advanced_testcase {
         $none = campaign::get($this->make());
         $this->assertTrue(campaign::passes_gate($none, 'anyone@anywhere.com', ''));
     }
+
+    /**
+     * A released reservation frees the slot again (compensation on downstream failure).
+     *
+     * @return void
+     */
+    public function test_release_reservation(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $id = $this->make(['maxredemptions' => 1]);
+
+        $this->assertTrue(campaign::redeem($id));
+        $this->assertFalse(campaign::redeem($id));
+        // Give the slot back; a redemption is possible again.
+        campaign::release_reservation($id);
+        $this->assertSame(0, (int) campaign::get($id)->redemptioncount);
+        $this->assertTrue(campaign::redeem($id));
+    }
 }

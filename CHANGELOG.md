@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.11 — 2026-08-20 — RC-Hardening: P0#6 (Admin-Conversion über Mailqueue)
+- Keine Codeaenderung.
+
+## 0.9.10 — 2026-08-20 — RC-Hardening: 7/8 P0 aus dem 0.9.8-Review
+- **P0#2 — Campaign-Kapazitaet unter Parallelitaet abgesichert:** `redeem()` reserviert einen Platz jetzt unter **Moodle-Lock** (Pruefung + Inkrement atomar); die Landing-Seite **reserviert vor** der Kontoerstellung und gibt den Platz via `release_reservation()` zurueck, falls die Anmeldung scheitert. Kein Doppel-Grant fuer den letzten Platz mehr.
+- **P0#8 — echter Privacy-Provider:** `null_provider` ersetzt; die Kampagnen-Tabelle (usermodified/name/timemodified) wird als personenbezogene Metadaten deklariert, exportiert und bei Loeschung anonymisiert (usermodified=0).
+
+**Offen (bewusst gestaffelt):** P0#6 — Admin-Conversion versendet die Passwort-Mail noch via Core `setnew_password_and_mail` (umgeht die FlexAccess-Mailqueue/Ratelimit). Fix erfordert einen neuen queued 'set-password'-Mailfluss.
+
 ## 0.9.9 — 2026-08-19 — Welle 4 Abschluss: Accessibility-Gate + Docs-SSOT & Traceability
 - Keine Codeaenderung.
 

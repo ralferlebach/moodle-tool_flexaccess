@@ -24,18 +24,146 @@
 
 namespace tool_flexaccess\privacy;
 
+use core_privacy\local\metadata\collection;
+use core_privacy\local\request\approved_contextlist;
+use core_privacy\local\request\approved_userlist;
+use core_privacy\local\request\contextlist;
+use core_privacy\local\request\userlist;
+use core_privacy\local\request\writer;
+
 /**
- * The administration tool stores no personal data of its own in the MVP.
+ * The administration tool records the administrator who last modified each invitation campaign.
  *
  * @package    tool_flexaccess
  */
-final class provider implements \core_privacy\local\metadata\null_provider {
+final class provider implements
+    \core_privacy\local\metadata\provider,
+    \core_privacy\local\request\core_userlist_provider,
+    \core_privacy\local\request\plugin\provider {
+    /** Campaign table. */
+    private const TABLE = 'tool_flexaccess_campaign';
+
     /**
-     * Get the reason there is no personal data.
+     * Describe the personal data stored by this plugin.
      *
-     * @return string
+     * @param collection $collection The collection to add to.
+     * @return collection
      */
-    public static function get_reason(): string {
-        return 'privacy:metadata';
+    public static function get_metadata(collection $collection): collection {
+        $collection->add_database_table(self::TABLE, [
+            'usermodified' => 'privacy:metadata:campaign:usermodified',
+            'name' => 'privacy:metadata:campaign:name',
+            'timemodified' => 'privacy:metadata:campaign:timemodified',
+        ], 'privacy:metadata:campaign');
+        return $collection;
+    }
+
+    /**
+     * Contexts containing data for a user: the system context when they modified any campaign.
+     *
+     * @param int $userid User id.
+     * @return contextlist
+     */
+    public static function get_contexts_for_userid(int $userid): contextlist {
+        global $DB;
+        $contextlist = new contextlist();
+        if ($DB->record_exists(self::TABLE, ['usermodified' => $userid])) {
+            $contextlist->add_system_context();
+        }
+        return $contextlist;
+    }
+
+    /**
+     * Users within a (system) context: administrators who modified campaigns.
+     *
+     * @param userlist $userlist The userlist to populate.
+     * @return void
+     */
+    public static function get_users_in_context(userlist $userlist): void {
+        global $DB;
+        if (!$userlist->get_context() instanceof \context_system) {
+            return;
+        }
+        $userids = $DB->get_fieldset_select(self::TABLE, 'DISTINCT usermodified', 'usermodified <> 0');
+        if ($userids) {
+            $userlist->add_users(array_map('intval', $userids));
+        }
+    }
+
+    /**
+     * Export the campaigns a user last modified.
+     *
+     * @param approved_contextlist $contextlist Approved contexts for a user.
+     * @return void
+     */
+    public static function export_user_data(approved_contextlist $contextlist): void {
+        global $DB;
+        $userid = (int) $contextlist->get_user()->id;
+        foreach ($contextlist->get_contexts() as $context) {
+            if (!$context instanceof \context_system) {
+                continue;
+            }
+            $campaigns = $DB->get_records(self::TABLE, ['usermodified' => $userid], 'timemodified ASC');
+            foreach ($campaigns as $campaign) {
+                writer::with_context($context)->export_data(
+                    ['tool_flexaccess', 'campaign', (string) $campaign->id],
+                    (object) [
+                        'name' => $campaign->name,
+                        'timemodified' => \core_privacy\local\request\transform::datetime((int) $campaign->timemodified),
+                    ]
+                );
+            }
+        }
+    }
+
+    /**
+     * Delete data for all users in a context: anonymise the modifier on every campaign.
+     *
+     * Campaigns are institutional configuration, not the user's own data, so we null the modifier
+     * reference rather than delete the campaign.
+     *
+     * @param \context $context The context.
+     * @return void
+     */
+    public static function delete_data_for_all_users_in_context(\context $context): void {
+        global $DB;
+        if ($context instanceof \context_system) {
+            $DB->set_field_select(self::TABLE, 'usermodified', 0, 'usermodified <> 0');
+        }
+    }
+
+    /**
+     * Delete data for a user across approved contexts: anonymise their modifier references.
+     *
+     * @param approved_contextlist $contextlist Approved contexts for a user.
+     * @return void
+     */
+    public static function delete_data_for_user(approved_contextlist $contextlist): void {
+        global $DB;
+        $userid = (int) $contextlist->get_user()->id;
+        foreach ($contextlist->get_contexts() as $context) {
+            if ($context instanceof \context_system) {
+                $DB->set_field(self::TABLE, 'usermodified', 0, ['usermodified' => $userid]);
+            }
+        }
+    }
+
+    /**
+     * Delete data for a set of users within a context: anonymise their modifier references.
+     *
+     * @param approved_userlist $userlist Approved users.
+     * @return void
+     */
+    public static function delete_data_for_users(approved_userlist $userlist): void {
+        global $DB;
+        if (!$userlist->get_context() instanceof \context_system) {
+            return;
+        }
+        $userids = $userlist->get_userids();
+        if (!$userids) {
+            return;
+        }
+        [$insql, $params] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+        $DB->set_field_select(self::TABLE, 'usermodified', 0, "usermodified $insql", $params);
     }
 }

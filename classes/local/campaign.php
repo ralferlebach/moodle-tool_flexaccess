@@ -171,28 +171,62 @@ final class campaign {
     }
 
     /**
-     * Atomically consume one redemption of a campaign.
+     * Atomically reserve one redemption of a campaign.
      *
-     * Uses a conditional UPDATE so a concurrent burst cannot exceed the cap: the increment only
-     * applies while the campaign is enabled and under its limit. Returns whether a slot was taken.
+     * A per-campaign Moodle lock serialises the check-and-increment, so a burst of concurrent
+     * requests for the last slot cannot over-reserve: the redeemability check and the increment
+     * happen inside the lock. Callers must reserve BEFORE creating any account/enrolment and, if the
+     * downstream flow then fails, call {@see release_reservation()} to give the slot back.
      *
      * @param int $id Campaign id.
      * @param int|null $now Current time.
-     * @return bool True when a redemption was recorded.
+     * @return bool True when a slot was reserved.
      */
     public static function redeem(int $id, ?int $now = null): bool {
         global $DB;
         $now = $now ?? time();
-        $sql = 'UPDATE {' . self::TABLE . '} '
-            . 'SET redemptioncount = redemptioncount + 1, timemodified = :now '
-            . 'WHERE id = :id AND enabled = 1 '
-            . 'AND (timeavailablefrom = 0 OR timeavailablefrom <= :nowfrom) '
-            . 'AND (timeavailableuntil = 0 OR timeavailableuntil >= :nowuntil) '
-            . 'AND (maxredemptions = 0 OR redemptioncount < maxredemptions)';
-        $before = (int) $DB->get_field(self::TABLE, 'redemptioncount', ['id' => $id]);
-        $DB->execute($sql, ['now' => $now, 'id' => $id, 'nowfrom' => $now, 'nowuntil' => $now]);
-        $after = (int) $DB->get_field(self::TABLE, 'redemptioncount', ['id' => $id]);
-        return $after > $before;
+        $lockfactory = \core\lock\lock_config::get_lock_factory('tool_flexaccess_campaign');
+        $lock = $lockfactory->get_lock('campaign_' . $id, 10);
+        if (!$lock) {
+            return false;
+        }
+        try {
+            $campaign = self::get($id);
+            if (!$campaign || !self::is_redeemable($campaign, $now)) {
+                return false;
+            }
+            $DB->set_field(self::TABLE, 'redemptioncount', (int) $campaign->redemptioncount + 1, ['id' => $id]);
+            $DB->set_field(self::TABLE, 'timemodified', $now, ['id' => $id]);
+            return true;
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * Return a previously reserved slot (compensation when the downstream sign-up fails).
+     *
+     * @param int $id Campaign id.
+     * @param int|null $now Current time.
+     * @return void
+     */
+    public static function release_reservation(int $id, ?int $now = null): void {
+        global $DB;
+        $now = $now ?? time();
+        $lockfactory = \core\lock\lock_config::get_lock_factory('tool_flexaccess_campaign');
+        $lock = $lockfactory->get_lock('campaign_' . $id, 10);
+        if (!$lock) {
+            return;
+        }
+        try {
+            $count = (int) $DB->get_field(self::TABLE, 'redemptioncount', ['id' => $id]);
+            if ($count > 0) {
+                $DB->set_field(self::TABLE, 'redemptioncount', $count - 1, ['id' => $id]);
+                $DB->set_field(self::TABLE, 'timemodified', $now, ['id' => $id]);
+            }
+        } finally {
+            $lock->release();
+        }
     }
 
     /**
