@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.18 — 2026-08-20 — Fix: PHPDoc-Parameterliste (enrol-CI rot)
+- Keine Codeaenderung.
+
 ## 0.9.17 — 2026-08-20 — Fix: Cross-Plugin-Mailqueue (Standalone-CI) + saubere API-Grenze
 - **Fix (Standalone-CI):** Der Invitation-Service schrieb Mails per Raw-Insert direkt in `auth_flexaccess_mailqueue`. In einer isolierten tool-CI (ohne installiertes `auth_flexaccess`) fehlte diese Tabelle -> zwei PHPUnit-Errors. Behoben durch:
   - **Saubere API-Grenze:** Versand laeuft jetzt ueber die oeffentliche `\auth_flexaccess\api::queue_mail()` (statt Direktzugriff auf die fremde Tabelle); der tote Raw-Insert wurde entfernt.
