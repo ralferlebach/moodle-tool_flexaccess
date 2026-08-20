@@ -46,6 +46,12 @@ final class provider implements
     /** Invitation table. */
     private const INVITE_TABLE = 'tool_flexaccess_invite';
 
+    /** Batch table. */
+    private const BATCH_TABLE = 'tool_flexaccess_batch';
+
+    /** Batch member table. */
+    private const BATCH_MEMBER_TABLE = 'tool_flexaccess_batch_member';
+
     /**
      * Describe the personal data stored by this plugin.
      *
@@ -63,6 +69,15 @@ final class provider implements
             'email' => 'privacy:metadata:invite:email',
             'timecreated' => 'privacy:metadata:invite:timecreated',
         ], 'privacy:metadata:invite');
+        $collection->add_database_table(self::BATCH_TABLE, [
+            'usermodified' => 'privacy:metadata:batch:usermodified',
+            'name' => 'privacy:metadata:batch:name',
+            'timecreated' => 'privacy:metadata:batch:timecreated',
+        ], 'privacy:metadata:batch');
+        $collection->add_database_table(self::BATCH_MEMBER_TABLE, [
+            'userid' => 'privacy:metadata:batchmember:userid',
+            'username' => 'privacy:metadata:batchmember:username',
+        ], 'privacy:metadata:batchmember');
         return $collection;
     }
 
@@ -97,11 +112,15 @@ final class provider implements
         if (!$userlist->get_context() instanceof \context_system) {
             return;
         }
-        foreach ([self::TABLE, self::INVITE_TABLE] as $table) {
+        foreach ([self::TABLE, self::INVITE_TABLE, self::BATCH_TABLE] as $table) {
             $userids = $DB->get_fieldset_select($table, 'DISTINCT usermodified', 'usermodified <> 0');
             if ($userids) {
                 $userlist->add_users(array_map('intval', $userids));
             }
+        }
+        $memberids = $DB->get_fieldset_select(self::BATCH_MEMBER_TABLE, 'DISTINCT userid', 'userid <> 0');
+        if ($memberids) {
+            $userlist->add_users(array_map('intval', $memberids));
         }
     }
 
@@ -162,6 +181,7 @@ final class provider implements
         if ($context instanceof \context_system) {
             $DB->set_field_select(self::TABLE, 'usermodified', 0, 'usermodified <> 0');
             $DB->set_field_select(self::INVITE_TABLE, 'usermodified', 0, 'usermodified <> 0');
+            $DB->set_field_select(self::BATCH_TABLE, 'usermodified', 0, 'usermodified <> 0');
         }
     }
 
@@ -182,6 +202,8 @@ final class provider implements
                 if ($email !== '') {
                     $DB->set_field(self::INVITE_TABLE, 'email', '', ['email' => $email]);
                 }
+                $DB->set_field(self::BATCH_TABLE, 'usermodified', 0, ['usermodified' => $userid]);
+                $DB->delete_records(self::BATCH_MEMBER_TABLE, ['userid' => $userid]);
             }
         }
     }
@@ -208,5 +230,7 @@ final class provider implements
         foreach (array_filter($emails) as $email) {
             $DB->set_field(self::INVITE_TABLE, 'email', '', ['email' => $email]);
         }
+        $DB->set_field_select(self::BATCH_TABLE, 'usermodified', 0, "usermodified $insql", $params);
+        $DB->delete_records_select(self::BATCH_MEMBER_TABLE, "userid $insql", $params);
     }
 }

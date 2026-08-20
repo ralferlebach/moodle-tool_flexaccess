@@ -76,9 +76,11 @@ $failure = null;
 if ($form->is_cancelled()) {
     redirect($courseurl);
 } else if ($data = $form->get_data()) {
-    // Consume the invitation first (single-use); the bound email always wins over any submitted one.
-    $consumed = invitation::accept($token);
-    if ($consumed === null) {
+    // Reserve the invitation first so concurrent attempts cannot use it, but do NOT consume it yet:
+    // it is only marked accepted once registration succeeds. On any failure it returns to pending so
+    // the recipient can retry with the same single-use invitation.
+    $reserved = invitation::reserve($token);
+    if ($reserved === null) {
         $failure = 'invite:unavailable';
     } else {
         $result = \enrol_flexaccess\local\access_controller::grant_quick_registration((int) $invite->courseid, (object) [
@@ -89,6 +91,7 @@ if ($form->is_cancelled()) {
             'accesspassword' => '',
         ], getremoteaddr(), null, true);
         if ($result->status === 'granted' || $result->status === 'verificationsent') {
+            invitation::commit_acceptance((int) $reserved->id);
             $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);
             complete_user_login($user);
             $message = $result->status === 'verificationsent'
@@ -96,6 +99,8 @@ if ($form->is_cancelled()) {
                 : get_string('register:success', 'auth_flexaccess');
             redirect($courseurl, $message);
         }
+        // Registration failed: hand the invitation back so it can be used again.
+        invitation::release_reservation((int) $reserved->id);
         $failure = 'access:' . $result->status;
     }
 }

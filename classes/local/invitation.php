@@ -41,13 +41,29 @@ final class invitation {
     /** Revoked by an administrator. */
     public const STATUS_REVOKED = 'revoked';
 
+    /** Reserved: a registration attempt is in progress (reserve-before-grant). */
+    public const STATUS_RESERVED = 'reserved';
+
+    /** Seconds after which a stale reservation may be reclaimed (crashed/abandoned attempt). */
+    private const RESERVE_TIMEOUT = 600;
+
     /**
-     * Generate a random URL-safe invitation token.
+     * Generate a random URL-safe invitation token (plaintext, never stored).
      *
      * @return string
      */
     public static function generate_token(): string {
         return bin2hex(random_bytes(16));
+    }
+
+    /**
+     * Hash a plaintext token for storage/lookup. Only the hash is ever persisted.
+     *
+     * @param string $token Plaintext token.
+     * @return string
+     */
+    private static function hash_token(string $token): string {
+        return hash('sha256', trim($token));
     }
 
     /**
@@ -62,9 +78,9 @@ final class invitation {
     }
 
     /**
-     * Load an invitation by its token.
+     * Load an invitation by its plaintext token (matched against the stored hash).
      *
-     * @param string $token Invitation token.
+     * @param string $token Plaintext invitation token.
      * @return \stdClass|null
      */
     public static function get_by_token(string $token): ?\stdClass {
@@ -73,7 +89,7 @@ final class invitation {
         if ($token === '') {
             return null;
         }
-        return $DB->get_record(self::TABLE, ['token' => $token]) ?: null;
+        return $DB->get_record(self::TABLE, ['tokenhash' => self::hash_token($token)]) ?: null;
     }
 
     /**
@@ -121,16 +137,34 @@ final class invitation {
             'courseid' => $courseid,
             'campaignid' => $campaignid,
             'email' => \core_text::strtolower(trim($email)),
-            'token' => self::unique_token(),
+            'tokenhash' => self::unique_tokenhash(),
             'status' => self::STATUS_PENDING,
             'timecreated' => $now,
             'timeexpires' => max(0, $timeexpires),
             'timesent' => 0,
+            'timereserved' => 0,
             'timeaccepted' => 0,
             'timereminded' => 0,
             'remindercount' => 0,
             'usermodified' => (int) $USER->id,
         ]);
+    }
+
+    /**
+     * Issue a fresh single-use token for an invitation, persisting only its hash, and return the
+     * plaintext for immediate delivery. Re-issuing invalidates any previously sent link.
+     *
+     * @param int $id Invitation id.
+     * @return string Plaintext token (to render into the outgoing mail).
+     */
+    private static function issue_token(int $id): string {
+        global $DB;
+        do {
+            $token = self::generate_token();
+            $hash = self::hash_token($token);
+        } while ($DB->record_exists(self::TABLE, ['tokenhash' => $hash]));
+        $DB->set_field(self::TABLE, 'tokenhash', $hash, ['id' => $id]);
+        return $token;
     }
 
     /**
@@ -162,7 +196,7 @@ final class invitation {
         if (!$invite || $invite->status !== self::STATUS_PENDING) {
             return false;
         }
-        self::queue_mail($invite, 'invite:emailsubject', 'invite:emailbody', $now);
+        self::queue_mail($invite, self::issue_token($id), 'invite:emailsubject', 'invite:emailbody', $now);
         $DB->set_field(self::TABLE, 'timesent', $now, ['id' => $id]);
         return true;
     }
@@ -184,7 +218,7 @@ final class invitation {
         if ((int) $invite->timeexpires > 0 && $now > (int) $invite->timeexpires) {
             return false;
         }
-        self::queue_mail($invite, 'invite:remindersubject', 'invite:reminderbody', $now);
+        self::queue_mail($invite, self::issue_token($id), 'invite:remindersubject', 'invite:reminderbody', $now);
         $DB->set_field(self::TABLE, 'timereminded', $now, ['id' => $id]);
         $DB->set_field(self::TABLE, 'remindercount', (int) $invite->remindercount + 1, ['id' => $id]);
         return true;
@@ -214,7 +248,19 @@ final class invitation {
      * @param int|null $now Current time.
      * @return \stdClass|null The consumed invitation, or null.
      */
-    public static function accept(string $token, ?int $now = null): ?\stdClass {
+    /**
+     * Reserve an invitation for a registration attempt (reserve-before-grant).
+     *
+     * Under a per-invitation lock, an acceptable invitation is moved to RESERVED so concurrent
+     * attempts cannot use it. A reservation older than {@see RESERVE_TIMEOUT} (a crashed/abandoned
+     * attempt) may be reclaimed. On success the caller must {@see commit_acceptance()} or, if the
+     * registration fails, {@see release_reservation()} so the invitation returns to PENDING.
+     *
+     * @param string $token Plaintext invitation token.
+     * @param int|null $now Current time.
+     * @return \stdClass|null The reserved invitation, or null if it is not usable.
+     */
+    public static function reserve(string $token, ?int $now = null): ?\stdClass {
         global $DB;
         $now = $now ?? time();
         $invite = self::get_by_token($token);
@@ -228,17 +274,75 @@ final class invitation {
         }
         try {
             $fresh = self::get($invite->id);
-            if (!$fresh || !self::is_acceptable($fresh, $now)) {
+            if (!$fresh) {
                 return null;
             }
-            $DB->set_field(self::TABLE, 'status', self::STATUS_ACCEPTED, ['id' => $fresh->id]);
-            $DB->set_field(self::TABLE, 'timeaccepted', $now, ['id' => $fresh->id]);
-            $fresh->status = self::STATUS_ACCEPTED;
-            $fresh->timeaccepted = $now;
+            $stalereservation = $fresh->status === self::STATUS_RESERVED
+                && (int) $fresh->timereserved > 0
+                && $now - (int) $fresh->timereserved > self::RESERVE_TIMEOUT
+                && ((int) $fresh->timeexpires === 0 || $now <= (int) $fresh->timeexpires);
+            if (!self::is_acceptable($fresh, $now) && !$stalereservation) {
+                return null;
+            }
+            $DB->set_field(self::TABLE, 'status', self::STATUS_RESERVED, ['id' => $fresh->id]);
+            $DB->set_field(self::TABLE, 'timereserved', $now, ['id' => $fresh->id]);
+            $fresh->status = self::STATUS_RESERVED;
+            $fresh->timereserved = $now;
             return $fresh;
         } finally {
             $lock->release();
         }
+    }
+
+    /**
+     * Finalise a reserved invitation as accepted (registration succeeded).
+     *
+     * @param int $id Invitation id.
+     * @param int|null $now Current time.
+     * @return void
+     */
+    public static function commit_acceptance(int $id, ?int $now = null): void {
+        global $DB;
+        $now = $now ?? time();
+        $invite = self::get($id);
+        if ($invite && $invite->status === self::STATUS_RESERVED) {
+            $DB->set_field(self::TABLE, 'status', self::STATUS_ACCEPTED, ['id' => $id]);
+            $DB->set_field(self::TABLE, 'timeaccepted', $now, ['id' => $id]);
+        }
+    }
+
+    /**
+     * Return a reserved invitation to PENDING (registration failed), so it can be used again.
+     *
+     * @param int $id Invitation id.
+     * @return void
+     */
+    public static function release_reservation(int $id): void {
+        global $DB;
+        $invite = self::get($id);
+        if ($invite && $invite->status === self::STATUS_RESERVED) {
+            $DB->set_field(self::TABLE, 'status', self::STATUS_PENDING, ['id' => $id]);
+            $DB->set_field(self::TABLE, 'timereserved', 0, ['id' => $id]);
+        }
+    }
+
+    /**
+     * Atomically reserve and accept an invitation in one step (single-use convenience).
+     *
+     * @param string $token Plaintext invitation token.
+     * @param int|null $now Current time.
+     * @return \stdClass|null The accepted invitation, or null.
+     */
+    public static function accept(string $token, ?int $now = null): ?\stdClass {
+        $now = $now ?? time();
+        $reserved = self::reserve($token, $now);
+        if ($reserved === null) {
+            return null;
+        }
+        self::commit_acceptance((int) $reserved->id, $now);
+        $reserved->status = self::STATUS_ACCEPTED;
+        $reserved->timeaccepted = $now;
+        return $reserved;
     }
 
     /**
@@ -270,12 +374,20 @@ final class invitation {
      * @param int $now Current time.
      * @return void
      */
-    private static function queue_mail(\stdClass $invite, string $subjectkey, string $bodykey, int $now): void {
+    private static function queue_mail(
+        \stdClass $invite,
+        string $token,
+        string $subjectkey,
+        string $bodykey,
+        int $now
+    ): void {
         if (!class_exists('\auth_flexaccess\api')) {
             // The auth plugin (a declared dependency) is not available; nothing can be queued.
             return;
         }
-        $link = (new \moodle_url('/admin/tool/flexaccess/invite.php', ['token' => $invite->token]))->out(false);
+        // The plaintext token exists only here, rendered into the outgoing single-use link; at rest
+        // the invitation keeps only its hash. The queued mail row is pruned after delivery.
+        $link = (new \moodle_url('/admin/tool/flexaccess/invite.php', ['token' => $token]))->out(false);
         $subject = get_string($subjectkey, 'tool_flexaccess');
         $body = get_string($bodykey, 'tool_flexaccess', $link);
         $bodyhtml = \html_writer::tag('p', get_string($bodykey, 'tool_flexaccess', \html_writer::link($link, $link)));
@@ -287,11 +399,17 @@ final class invitation {
      *
      * @return string
      */
-    private static function unique_token(): string {
+    /**
+     * Produce a token hash guaranteed unique in the table (the plaintext is discarded; a fresh
+     * usable token is issued on send).
+     *
+     * @return string
+     */
+    private static function unique_tokenhash(): string {
         global $DB;
         do {
-            $token = self::generate_token();
-        } while ($DB->record_exists(self::TABLE, ['token' => $token]));
-        return $token;
+            $hash = self::hash_token(self::generate_token());
+        } while ($DB->record_exists(self::TABLE, ['tokenhash' => $hash]));
+        return $hash;
     }
 }

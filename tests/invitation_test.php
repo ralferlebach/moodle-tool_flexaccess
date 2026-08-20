@@ -57,6 +57,26 @@ final class invitation_test extends \advanced_testcase {
     }
 
     /**
+     * Send an invitation and return the plaintext single-use token from the queued mail. The token
+     * only ever exists in the outgoing mail (the invitation stores just its hash), so this mirrors
+     * the real acceptance path. Requires the auth mail queue.
+     *
+     * @param int $id Invitation id.
+     * @return string
+     */
+    private function sent_token(int $id): string {
+        global $DB;
+        $this->require_auth_queue();
+        invitation::send($id);
+        $invite = invitation::get($id);
+        $jobs = $DB->get_records('auth_flexaccess_mailqueue', ['recipient' => $invite->email], 'id DESC', '*', 0, 1);
+        $job = reset($jobs);
+        $payload = json_decode($job->payloadjson);
+        preg_match('/token=([A-Za-z0-9]+)/', $payload->body, $m);
+        return $m[1];
+    }
+
+    /**
      * Create, look up by token, and acceptability of a fresh invitation.
      *
      * @return void
@@ -69,8 +89,10 @@ final class invitation_test extends \advanced_testcase {
         $this->assertNotNull($invite);
         $this->assertSame('person@example.com', $invite->email);
         $this->assertSame(invitation::STATUS_PENDING, $invite->status);
-        $this->assertSame($invite->id, invitation::get_by_token($invite->token)->id);
         $this->assertTrue(invitation::is_acceptable($invite));
+        // The token materialises only on send; look it up via the hash.
+        $token = $this->sent_token($id);
+        $this->assertSame($invite->id, invitation::get_by_token($token)->id);
     }
 
     /**
@@ -125,13 +147,14 @@ final class invitation_test extends \advanced_testcase {
     public function test_accept_is_single_use(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
-        $invite = invitation::get($this->make('d@example.com'));
+        $id = $this->make('d@example.com');
+        $token = $this->sent_token($id);
 
-        $first = invitation::accept($invite->token);
+        $first = invitation::accept($token);
         $this->assertNotNull($first);
         $this->assertSame(invitation::STATUS_ACCEPTED, $first->status);
-        // Second attempt is refused; a revoked/accepted invite is not acceptable.
-        $this->assertNull(invitation::accept($invite->token));
+        // Second attempt is refused; an accepted invite is not acceptable.
+        $this->assertNull(invitation::accept($token));
     }
 
     /**
@@ -163,5 +186,35 @@ final class invitation_test extends \advanced_testcase {
         $this->assertContains($due, $ids);
         $this->assertNotContains($recent, $ids);
         $this->assertNotContains($reminded, $ids);
+    }
+
+    /**
+     * P0-2: reserving does not consume the invitation; releasing returns it to pending so a failed
+     * registration can be retried, while committing finalises it (and blocks reuse).
+     *
+     * @return void
+     */
+    public function test_reserve_release_and_commit(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $id = $this->make('reserve@example.com');
+        $token = $this->sent_token($id);
+
+        // Reserve -> not yet accepted; concurrent reserve is blocked.
+        $reserved = invitation::reserve($token);
+        $this->assertNotNull($reserved);
+        $this->assertSame(invitation::STATUS_RESERVED, invitation::get($id)->status);
+        $this->assertNull(invitation::reserve($token));
+
+        // Release -> back to pending, reusable.
+        invitation::release_reservation($id);
+        $this->assertSame(invitation::STATUS_PENDING, invitation::get($id)->status);
+        $this->assertTrue(invitation::is_acceptable(invitation::get($id)));
+
+        // Reserve again, then commit -> accepted and no longer usable.
+        $this->assertNotNull(invitation::reserve($token));
+        invitation::commit_acceptance($id);
+        $this->assertSame(invitation::STATUS_ACCEPTED, invitation::get($id)->status);
+        $this->assertNull(invitation::reserve($token));
     }
 }

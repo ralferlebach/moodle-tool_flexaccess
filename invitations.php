@@ -129,6 +129,7 @@ if ($invites) {
         invitation::STATUS_PENDING => get_string('invite:status_pending', 'tool_flexaccess'),
         invitation::STATUS_ACCEPTED => get_string('invite:status_accepted', 'tool_flexaccess'),
         invitation::STATUS_REVOKED => get_string('invite:status_revoked', 'tool_flexaccess'),
+        invitation::STATUS_RESERVED => get_string('invite:status_reserved', 'tool_flexaccess'),
     ];
     $table = new html_table();
     $table->head = [

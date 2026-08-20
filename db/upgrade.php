@@ -83,5 +83,99 @@ function xmldb_tool_flexaccess_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026081914, 'tool', 'flexaccess');
     }
 
+    if ($oldversion < 2026081919) {
+        $table = new xmldb_table('tool_flexaccess_invite');
+        if ($dbman->table_exists($table)) {
+            // Add the hashed-token column and a reservation timestamp.
+            $tokenhash = new xmldb_field('tokenhash', XMLDB_TYPE_CHAR, '64', null, null, null, null, 'token');
+            if (!$dbman->field_exists($table, $tokenhash)) {
+                $dbman->add_field($table, $tokenhash);
+            }
+            $timereserved = new xmldb_field(
+                'timereserved',
+                XMLDB_TYPE_INTEGER,
+                '10',
+                null,
+                XMLDB_NOTNULL,
+                null,
+                '0',
+                'timesent'
+            );
+            if (!$dbman->field_exists($table, $timereserved)) {
+                $dbman->add_field($table, $timereserved);
+            }
+            // Migrate any existing plaintext tokens into their SHA-256 hash, then drop the old index
+            // and the plaintext column so no bearer secret remains at rest.
+            $tokenfield = new xmldb_field('token');
+            if ($dbman->field_exists($table, $tokenfield)) {
+                $rs = $DB->get_recordset_select(
+                    'tool_flexaccess_invite',
+                    "token IS NOT NULL AND token <> ''",
+                    null,
+                    '',
+                    'id, token'
+                );
+                foreach ($rs as $row) {
+                    $DB->set_field(
+                        'tool_flexaccess_invite',
+                        'tokenhash',
+                        hash('sha256', $row->token),
+                        ['id' => $row->id]
+                    );
+                }
+                $rs->close();
+                $oldindex = new xmldb_index('invitetoken_uix', XMLDB_INDEX_UNIQUE, ['token']);
+                if ($dbman->index_exists($table, $oldindex)) {
+                    $dbman->drop_index($table, $oldindex);
+                }
+                $dbman->drop_field($table, $tokenfield);
+            }
+            // Make tokenhash NOT NULL and uniquely indexed.
+            $dbman->change_field_notnull($table, new xmldb_field(
+                'tokenhash',
+                XMLDB_TYPE_CHAR,
+                '64',
+                null,
+                XMLDB_NOTNULL,
+                null,
+                null
+            ));
+            $newindex = new xmldb_index('invitetokenhash_uix', XMLDB_INDEX_UNIQUE, ['tokenhash']);
+            if (!$dbman->index_exists($table, $newindex)) {
+                $dbman->add_index($table, $newindex);
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026081919, 'tool', 'flexaccess');
+    }
+
+    if ($oldversion < 2026081920) {
+        $batch = new xmldb_table('tool_flexaccess_batch');
+        if (!$dbman->table_exists($batch)) {
+            $batch->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $batch->add_field('name', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, null);
+            $batch->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+            $batch->add_field('permanent', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0');
+            $batch->add_field('membercount', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $batch->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+            $batch->add_field('usermodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $batch->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $batch->add_key('courseid_fk', XMLDB_KEY_FOREIGN, ['courseid'], 'course', ['id']);
+            $dbman->create_table($batch);
+        }
+        $member = new xmldb_table('tool_flexaccess_batch_member');
+        if (!$dbman->table_exists($member)) {
+            $member->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $member->add_field('batchid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+            $member->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+            $member->add_field('username', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, null);
+            $member->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $member->add_key('batchid_fk', XMLDB_KEY_FOREIGN, ['batchid'], 'tool_flexaccess_batch', ['id']);
+            $member->add_key('userid_fk', XMLDB_KEY_FOREIGN, ['userid'], 'user', ['id']);
+            $member->add_index('batch_username_ix', XMLDB_INDEX_NOTUNIQUE, ['batchid', 'username']);
+            $dbman->create_table($member);
+        }
+        upgrade_plugin_savepoint(true, 2026081920, 'tool', 'flexaccess');
+    }
+
     return true;
 }

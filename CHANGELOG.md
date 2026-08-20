@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.21 — 2026-08-20 — Feature: Excel-Rückkonversion von Stapel-Accounts (Kampagne, Teil 2)
+- **Neu (Kampagne, Teil 2):** Rückkonversion aus dem ausgefüllten Export. Neuer Service `local\batch_import` (`parse()` liest die hochgeladene .xlsx via PhpSpreadsheet; `convert()` ordnet jede Zeile über die ursprüngliche Nutzerkennung dem Stapel-Mitglied zu, personalisiert Vorname/Nachname/E-Mail und wandelt den Account zu einem vollwertigen, dauerhaften Account um — inkl. Passwort-setzen-Mail an die neue Adresse als E-Mail-Konfirmation). Nutzerkennungs-Änderung per Excel (optionale Spalte fuer die neue Nutzerkennung, Vorrang) ODER per Regel (E-Mail / erzeugte Kennung behalten / lokaler E-Mail-Teil / vorname.nachname). Zeilen ohne Treffer/E-Mail werden mit Meldung übersprungen. Neue Seite `batchconvert.php` (+ `batch_convert_form` mit Filepicker + Regel-Auswahl), verlinkt von der Stapel-Ansicht. Excel-Export um die optionale Spalte fuer die neue Nutzerkennung erweitert.
+
+## 0.9.20 — 2026-08-20 — Feature: Stapel-Bereitstellung von Kurs-Accounts (Kampagne, Teil 1)
+- **Neu (§ Kampagne, Teil 1):** Stapelweise Bereitstellung von Kurs-Accounts. Neue Tabellen `tool_flexaccess_batch` + `tool_flexaccess_batch_member`, Service `local\batch` (Anlage von N Accounts mit zufaelliger Nutzerkennung + Passwort, Einschreibung in einen Kurs ueber die FlexAccess-Einschreibung/Teilnehmerrolle, vorlaeufig-eingeschraenkt ODER dauerhaft-vollwertig; `reset_credentials` fuer sichere Neu-Ausgabe). Drei Exporte via `local\batch_export`: Excel (PhpSpreadsheet; Nutzerkennung, Passwort, leere Spalten Vorname/Nachname/E-Mail/Profilfelder), druckbare PDF-Liste (Nutzerkennung alphabetisch, Passwort, leere Namensspalten) und Login-Kaertchen-PDF (8 Karten/Seite mit Nutzerkennung, Passwort, Kurs-URL, QR-Code). Admin-UI `batches.php` (+ `batch_form`) und `batchdownload.php` (setzt frische Passwoerter und streamt Excel/PDF/Kaertchen einzeln oder als ZIP). Neue Capability `tool/flexaccess:managebatches`, Menuepunkt, Privacy-Provider erweitert. Klartext-Passwoerter werden nie gespeichert (nur im Arbeitsspeicher waehrend Anlage/Export).
+
+## 0.9.19 — 2026-08-20 — Fix: Upgrade-Crash beim Verbreitern der indizierten ratehit.identifier-Spalte
+- Keine Codeaenderung.
+
+## 0.9.19 — 2026-08-20 — RC-Gates (Review 0.9.17): Invitation-Security (2 P0) + Playwright-Lockfile
+- **P0-1 (Bearer-Secret at rest):** Der Invitation-Token wird nicht mehr im Klartext gespeichert. `tool_flexaccess_invite.token` (CHAR40) -> `tokenhash` (CHAR64, SHA-256); der Klartext-Token wird erst beim Versand erzeugt, nur sein Hash persistiert (Upgrade migriert bestehende Tokens -> Hash und droppt die Klartextspalte). Jeder Versand/Reminder gibt einen frischen Single-Use-Token aus; der Klartext existiert nur transient in der (nach Zustellung geprunten) Mailqueue.
+- **P0-2 (Consume-before-success):** Einladungen werden jetzt nach Reserve->Grant->Commit verarbeitet (neuer Status `reserved` + `timereserved`, mit Timeout-Reclaim fuer abgebrochene Versuche). `invite.php` reserviert vor der Registrierung und **committet erst bei Erfolg**; scheitert die Registrierung, geht die Einladung via `release_reservation()` zurueck auf `pending` und ist erneut nutzbar. Neuer Test deckt Reserve/Release/Retry + Commit ab.
+- Campaign-Token bleibt unveraendert (bewusst re-teilbar, siehe SSOT).
+
 ## 0.9.18 — 2026-08-20 — Fix: PHPDoc-Parameterliste (enrol-CI rot)
 - Keine Codeaenderung.
 

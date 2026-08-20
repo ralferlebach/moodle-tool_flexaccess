@@ -68,4 +68,10 @@ if ($hassiteconfig) {
         new moodle_url('/admin/tool/flexaccess/invitations.php'),
         'tool/flexaccess:manageinvitations'
     ));
+    $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
+        'tool_flexaccess_batches',
+        get_string('batches', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/batches.php'),
+        'tool/flexaccess:managebatches'
+    ));
 }
