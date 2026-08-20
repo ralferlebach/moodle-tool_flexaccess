@@ -148,7 +148,3 @@ $string['privacy:metadata:campaign'] = 'Informationen zu FlexAccess-Einladungska
 $string['privacy:metadata:campaign:name'] = 'Der Kampagnenname.';
 $string['privacy:metadata:campaign:timemodified'] = 'Der Zeitpunkt der letzten Änderung der Kampagne.';
 $string['privacy:metadata:campaign:usermodified'] = 'Die Administratorin/der Administrator, die/der die Kampagne zuletzt geändert hat.';
-$string['stubaccounts'] = 'Stub für Accountsuche und -details. Produktivcode verwendet die öffentlichen Query- und Mutationsservices von auth_flexaccess.';
-$string['stubdashboard'] = 'FlexAccess-Administrations-Stub. Betriebskennzahlen und Aktionen sind noch nicht implementiert.';
-$string['stubmailqueue'] = 'Stub für die Mail-Warteschlange. Queue-Status, Stundenkontingent und Retry-Aktionen werden über Services von auth_flexaccess bereitgestellt.';
-$string['stubpolicies'] = 'Stub für die Policy-Diagnose. Effektive Policy-Traces werden über Services von enrol_flexaccess bereitgestellt.';

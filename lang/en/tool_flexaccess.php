@@ -148,7 +148,3 @@ $string['privacy:metadata:campaign'] = 'Information about FlexAccess invitation 
 $string['privacy:metadata:campaign:name'] = 'The campaign name.';
 $string['privacy:metadata:campaign:timemodified'] = 'The time the campaign was last modified.';
 $string['privacy:metadata:campaign:usermodified'] = 'The administrator who last modified the campaign.';
-$string['stubaccounts'] = 'Account search/detail scaffold. Production code will use the public auth_flexaccess query and mutation services.';
-$string['stubdashboard'] = 'FlexAccess administration scaffold. Operational metrics and actions are not implemented yet.';
-$string['stubmailqueue'] = 'Mail queue scaffold. Queue status, hourly capacity and retry actions will be provided by auth_flexaccess services.';
-$string['stubpolicies'] = 'Policy diagnostics scaffold. Effective policy traces will be provided by enrol_flexaccess services.';
