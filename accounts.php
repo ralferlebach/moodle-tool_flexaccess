@@ -54,6 +54,16 @@ $PAGE->set_pagelayout('admin');
 $PAGE->set_title(get_string('accounts', 'tool_flexaccess'));
 $PAGE->set_heading(get_string('pluginname', 'tool_flexaccess'));
 
+if ($convert > 0) {
+    require_sesskey();
+    require_capability('tool/flexaccess:convertaccounts', $context);
+    $done = \auth_flexaccess\api::admin_convert($convert);
+    $message = $done ? get_string('accountconverted', 'tool_flexaccess')
+        : get_string('accountnotconverted', 'tool_flexaccess');
+    redirect($baseurl, $message, null,
+        $done ? \core\output\notification::NOTIFY_SUCCESS : \core\output\notification::NOTIFY_INFO);
+}
+
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('accounts', 'tool_flexaccess'));
 

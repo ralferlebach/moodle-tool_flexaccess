@@ -150,20 +150,15 @@ jobs:
           echo "$GITHUB_WORKSPACE/ci/vendor/bin" >> "$GITHUB_PATH"
       - name: Check out sibling FlexAccess plugins (declared dependencies)
         run: |
-          # tool_flexaccess declares hard version.php dependencies on auth+enrol (the invitation and
-          # campaign mail path uses the auth mail queue). Pin SIBLING_REF to the matching release
-          # tag/SHA for a reproducible build (defaults to main).
-          SIBLING_REF="${SIBLING_REF:-main}"
-          mkdir -p "$HOME/extra-plugins"
-          for sib in auth enrol; do
-            git clone --depth 1 --branch "$SIBLING_REF" \
-              "https://github.com/ralferlebach/moodle-${sib}_flexaccess.git" \
-              "$HOME/extra-plugins/${sib}_flexaccess" \
-              || git clone --depth 1 \
-              "https://github.com/ralferlebach/moodle-${sib}_flexaccess.git" \
-              "$HOME/extra-plugins/${sib}_flexaccess"
-          done
-      - name: Install Moodle and plugin
+          if [ "${{ matrix.db }}" = "pgsql" ]; then
+            DBTYPE=pgsql; DBUSER=moodle; DBPASS=moodle; DBPORT=5432
+          else
+            DBTYPE=mariadb; DBUSER=root; DBPASS=root; DBPORT=3306
+          fi
+          moodle-plugin-ci install --plugin ./plugin --branch ${{ matrix.moodle }} \
+            --db-type "$DBTYPE" --db-host 127.0.0.1 --db-port "$DBPORT" \
+            --db-user "$DBUSER" --db-pass "$DBPASS" --db-name moodle
+      - name: Validate
         run: |
           moodle-plugin-ci install --plugin ./plugin --extra-plugins "$HOME/extra-plugins" \
             --db-host 127.0.0.1 --db-port ${{ matrix.db.port }} \
