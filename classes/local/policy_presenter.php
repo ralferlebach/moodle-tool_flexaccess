@@ -28,7 +28,11 @@
 
 namespace tool_flexaccess\local;
 
-/** Turns an effective policy into a flat, secret-free set of display values. */
+/**
+ * Turns an effective policy into a flat, secret-free set of display values.
+ *
+ * @package    tool_flexaccess
+ */
 final class policy_presenter {
     /**
      * Summarise the effective policy as an ordered map of display keys to scalar values.
@@ -50,5 +54,20 @@ final class policy_presenter {
             'participantvisibility' => (string) $policy->participantvisibility,
             'accesskeyscope' => (string) $policy->temporaryaccesskeyscope,
         ];
+    }
+
+    /**
+     * Localised label for a participant-visibility enum value ('show'/'hide'/'inherit').
+     *
+     * @param string $value Stored enum value.
+     * @return string Human-readable label.
+     */
+    public static function visibility_label(string $value): string {
+        $keys = [
+            'show' => 'policyvisibilityshow',
+            'hide' => 'policyvisibilityhide',
+            'inherit' => 'policyvisibilityinherit',
+        ];
+        return isset($keys[$value]) ? get_string($keys[$value], 'tool_flexaccess') : $value;
     }
 }

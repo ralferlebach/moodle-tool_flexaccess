@@ -17,6 +17,7 @@
 /**
  * Administrative dashboard page for tool_flexaccess.
  *
+ * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -35,6 +36,14 @@ $PAGE->set_heading(get_string('pluginname', 'tool_flexaccess'));
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('dashboard', 'tool_flexaccess'));
+
+// The dashboard aggregates data owned by the auth_flexaccess sibling plugin. If that plugin is not
+// installed (for example during isolated CI), degrade gracefully instead of throwing.
+if (!class_exists(\auth_flexaccess\api::class)) {
+    echo $OUTPUT->notification(get_string('authunavailable', 'tool_flexaccess'), 'warning');
+    echo $OUTPUT->footer();
+    return;
+}
 
 $stats = \auth_flexaccess\api::account_stats();
 $mail = \auth_flexaccess\api::mailqueue_summary();
@@ -62,9 +71,14 @@ $mailtable->data = [
 echo html_writer::table($mailtable);
 
 echo html_writer::div(
-    html_writer::link(new moodle_url('/admin/tool/flexaccess/accounts.php'),
-        get_string('accounts', 'tool_flexaccess')) . ' | ' .
-    html_writer::link(new moodle_url('/admin/tool/flexaccess/mailqueue.php'),
-        get_string('mailqueue', 'tool_flexaccess')));
+    html_writer::link(
+        new moodle_url('/admin/tool/flexaccess/accounts.php'),
+        get_string('accounts', 'tool_flexaccess')
+    ) . ' | ' .
+    html_writer::link(
+        new moodle_url('/admin/tool/flexaccess/mailqueue.php'),
+        get_string('mailqueue', 'tool_flexaccess')
+    )
+);
 
 echo $OUTPUT->footer();

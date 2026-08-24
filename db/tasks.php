@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Plugin version definition for tool_flexaccess.
+ * Scheduled task definitions for tool_flexaccess.
  *
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -24,13 +24,14 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->component = 'tool_flexaccess';
-$plugin->version = 2026081922;
-$plugin->requires = 2024100700; // Moodle 4.5.
-$plugin->supported = [405, 502];
-$plugin->maturity = MATURITY_BETA;
-$plugin->release = '0.9.22';
-$plugin->dependencies = [
-    'auth_flexaccess' => 2026081922,
-    'enrol_flexaccess' => 2026081922,
+$tasks = [
+    [
+        'classname' => 'tool_flexaccess\task\send_invitation_reminders',
+        'blocking' => 0,
+        'minute' => '30',
+        'hour' => '7',
+        'day' => '*',
+        'month' => '*',
+        'dayofweek' => '*',
+    ],
 ];

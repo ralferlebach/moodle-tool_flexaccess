@@ -17,6 +17,7 @@
 /**
  * Capabilities for tool_flexaccess.
  *
+ * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -33,11 +34,6 @@ $capabilities = [
         'captype' => 'read', 'contextlevel' => CONTEXT_SYSTEM,
         'archetypes' => ['manager' => CAP_ALLOW],
     ],
-    'tool/flexaccess:manageaccounts' => [
-        'riskbitmask' => RISK_PERSONAL | RISK_DATALOSS,
-        'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,
-        'archetypes' => ['manager' => CAP_ALLOW],
-    ],
     'tool/flexaccess:convertaccounts' => [
         'riskbitmask' => RISK_PERSONAL,
         'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,
@@ -50,6 +46,26 @@ $capabilities = [
     ],
     'tool/flexaccess:viewpolicies' => [
         'captype' => 'read', 'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => ['manager' => CAP_ALLOW],
+    ],
+    'tool/flexaccess:managepolicies' => [
+        'riskbitmask' => RISK_CONFIG,
+        'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => ['manager' => CAP_ALLOW],
+    ],
+    'tool/flexaccess:managecampaigns' => [
+        'riskbitmask' => RISK_CONFIG | RISK_SPAM,
+        'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => ['manager' => CAP_ALLOW],
+    ],
+    'tool/flexaccess:manageinvitations' => [
+        'riskbitmask' => RISK_SPAM | RISK_PERSONAL,
+        'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => ['manager' => CAP_ALLOW],
+    ],
+    'tool/flexaccess:managebatches' => [
+        'riskbitmask' => RISK_CONFIG | RISK_PERSONAL | RISK_SPAM,
+        'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,
         'archetypes' => ['manager' => CAP_ALLOW],
     ],
 ];

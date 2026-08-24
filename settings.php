@@ -17,6 +17,7 @@
 /**
  * Administration navigation for tool_flexaccess.
  *
+ * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -26,15 +27,51 @@ defined('MOODLE_INTERNAL') || die();
 if ($hassiteconfig) {
     $ADMIN->add('tools', new admin_category('tool_flexaccess_category', get_string('pluginname', 'tool_flexaccess')));
     $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
-        'tool_flexaccess_dashboard', get_string('dashboard', 'tool_flexaccess'),
-        new moodle_url('/admin/tool/flexaccess/index.php'), 'tool/flexaccess:viewdashboard'));
+        'tool_flexaccess_dashboard',
+        get_string('dashboard', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/index.php'),
+        'tool/flexaccess:viewdashboard'
+    ));
     $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
-        'tool_flexaccess_accounts', get_string('accounts', 'tool_flexaccess'),
-        new moodle_url('/admin/tool/flexaccess/accounts.php'), 'tool/flexaccess:viewaccounts'));
+        'tool_flexaccess_accounts',
+        get_string('accounts', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/accounts.php'),
+        'tool/flexaccess:viewaccounts'
+    ));
     $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
-        'tool_flexaccess_mailqueue', get_string('mailqueue', 'tool_flexaccess'),
-        new moodle_url('/admin/tool/flexaccess/mailqueue.php'), 'tool/flexaccess:managemailqueue'));
+        'tool_flexaccess_mailqueue',
+        get_string('mailqueue', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/mailqueue.php'),
+        'tool/flexaccess:managemailqueue'
+    ));
     $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
-        'tool_flexaccess_policies', get_string('policies', 'tool_flexaccess'),
-        new moodle_url('/admin/tool/flexaccess/policies.php'), 'tool/flexaccess:viewpolicies'));
+        'tool_flexaccess_policies',
+        get_string('policies', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/policies.php'),
+        'tool/flexaccess:viewpolicies'
+    ));
+    $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
+        'tool_flexaccess_managepolicies',
+        get_string('managepolicies', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/managepolicies.php'),
+        'tool/flexaccess:managepolicies'
+    ));
+    $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
+        'tool_flexaccess_campaigns',
+        get_string('campaigns', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/campaigns.php'),
+        'tool/flexaccess:managecampaigns'
+    ));
+    $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
+        'tool_flexaccess_invitations',
+        get_string('invitations', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/invitations.php'),
+        'tool/flexaccess:manageinvitations'
+    ));
+    $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
+        'tool_flexaccess_batches',
+        get_string('batches', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/batches.php'),
+        'tool/flexaccess:managebatches'
+    ));
 }

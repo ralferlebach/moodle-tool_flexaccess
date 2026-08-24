@@ -27,9 +27,29 @@ namespace tool_flexaccess;
 use tool_flexaccess\local\policy_presenter;
 use enrol_flexaccess\local\policy;
 
-/** Policy presenter tests. */
+/**
+ * Policy presenter tests.
+ *
+ * @package    tool_flexaccess
+ * @covers     \tool_flexaccess\local\policy_presenter
+ */
 final class policy_presenter_test extends \advanced_testcase {
-    /** The summary exposes the effective values and never a secret. */
+    /**
+     * Skip when the required sibling plugin is not installed (per-plugin CI).
+     *
+     * @return void
+     */
+    protected function setUp(): void {
+        parent::setUp();
+        global $DB;
+        if (!$DB->get_manager()->table_exists('enrol_flexaccess_instance')) {
+            $this->markTestSkipped('Requires the enrol_flexaccess sibling plugin to be installed.');
+        }
+    }
+
+    /**
+     * The summary exposes the effective values and never a secret.
+     */
     public function test_summarise_exposes_values_without_secrets(): void {
         $p = new policy();
         $p->allowtemporary = true;
