@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.28 — 2026-08-25 — P1 T2: kurs-interne Zugangslisten-Verwaltung
+- **T2:** Lehrende verwalten anonyme Zugangslisten jetzt **im Kurs** (`coursebatches.php`): Erstellen, Auflisten und Download (XLSX/PDF-Liste/Karten) für genau diesen Kurs, ohne in die Site-Administration zu wechseln.
+- Neue Kurskontext-Capability `tool/flexaccess:managecoursebatches` (editingteacher + manager). Neue API `batch::for_course()`, `count_for_course()`, `can_manage()`, `require_manage()` (Dual-Kontext: System-`managebatches` ODER Kurs-`managecoursebatches`).
+- `batchdownload.php` akzeptiert nun den Kurskontext (Lehrende dürfen ihre eigenen Listen herunterladen). Navigations-Hook `tool_flexaccess_extend_navigation_course()` verlinkt die Seite im Kurs. Neues Formular `coursebatch_form` (ohne Kurs-Selektor). Test `coursebatches_test`.
+- Versions-Gleichschritt auf `2026082405`.
+
 ## 0.9.27 — 2026-08-24 — CI-Fix: fehlerhafte Workflow-Ausdrücke (${ } → ${{ }})
 - Fehlerhafte GitHub-Actions-Ausdrücke im `lint-jsamd`-Job korrigiert (`${ } → ${{ }}`); mit `actionlint` gegengeprüft (0 Findings). Kein PHP-Code geändert; Versions-Gleichschritt auf `2026082404`.
 

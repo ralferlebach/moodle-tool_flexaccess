@@ -65,6 +65,61 @@ final class batch {
     }
 
     /**
+     * Batches provisioned for a single course, newest first.
+     *
+     * @param int $courseid Course id.
+     * @param int $limitfrom Offset.
+     * @param int $limitnum Page size (0 = no limit).
+     * @return array Batch records.
+     */
+    public static function for_course(int $courseid, int $limitfrom = 0, int $limitnum = 0): array {
+        global $DB;
+        return $DB->get_records(self::TABLE, ['courseid' => $courseid], 'timecreated DESC', '*', $limitfrom, $limitnum);
+    }
+
+    /**
+     * Number of batches provisioned for a single course.
+     *
+     * @param int $courseid Course id.
+     * @return int
+     */
+    public static function count_for_course(int $courseid): int {
+        global $DB;
+        return $DB->count_records(self::TABLE, ['courseid' => $courseid]);
+    }
+
+    /**
+     * Whether the current user may manage batches for the given course.
+     *
+     * Two roles can: a site manager holding tool/flexaccess:managebatches at system level, and a
+     * course teacher holding tool/flexaccess:managecoursebatches in the course context.
+     *
+     * @param int $courseid Course id.
+     * @return bool
+     */
+    public static function can_manage(int $courseid): bool {
+        return has_capability('tool/flexaccess:managebatches', \context_system::instance())
+            || has_capability('tool/flexaccess:managecoursebatches', \context_course::instance($courseid));
+    }
+
+    /**
+     * Require that the current user may manage batches for the given course.
+     *
+     * @param int $courseid Course id.
+     * @return void
+     */
+    public static function require_manage(int $courseid): void {
+        if (!self::can_manage($courseid)) {
+            throw new \required_capability_exception(
+                \context_course::instance($courseid),
+                'tool/flexaccess:managecoursebatches',
+                'nopermissions',
+                ''
+            );
+        }
+    }
+
+    /**
      * Total number of batches.
      *
      * @return int

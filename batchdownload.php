@@ -31,7 +31,6 @@ use tool_flexaccess\local\batch;
 use tool_flexaccess\local\batch_export;
 
 require_login();
-require_capability('tool/flexaccess:managebatches', context_system::instance());
 require_sesskey();
 
 $id = required_param('id', PARAM_INT);
@@ -41,6 +40,9 @@ $batch = batch::get($id);
 if (!$batch) {
     throw new moodle_exception('invalidrecord', 'error');
 }
+
+// A site manager (system context) or the owning course's teacher (course context) may download.
+batch::require_manage((int) $batch->courseid);
 
 // Fresh passwords for a consistent credential set across every generated file.
 $credentials = batch::reset_credentials($id, 10);
