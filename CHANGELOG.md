@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.35 — 2026-08-25 — Versions-Gleichschritt (CI-Fixes in auth/enrol)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082412`.
+
 ## 0.9.34 — 2026-08-25 — Versions-Gleichschritt (E-Mail-Login-Methode + Login-UI)
 - Keine Codeänderung. Versions-Gleichschritt auf `2026082411`.
 
