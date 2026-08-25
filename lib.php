@@ -36,7 +36,7 @@
  * @return void
  */
 function tool_flexaccess_extend_navigation_course($navigation, $course, $context) {
-    if (!\tool_flexaccess\local\batch::can_manage((int) $course->id)) {
+    if (!\tool_flexaccess\local\batch::can_request((int) $course->id)) {
         return;
     }
     $navigation->add(

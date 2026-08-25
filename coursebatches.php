@@ -15,11 +15,7 @@
 // along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
- * Teacher-facing, course-scoped management of anonymous access-list batches.
- *
- * This is the in-course counterpart to the site-wide admin/tool/flexaccess/batches.php: a teacher
- * creates, lists and downloads access-account batches (XLSX / PDF list / printable cards) for their
- * own course, without leaving the course context.
+ * Course-scoped access-list batches: managers create and download them; teachers request them.
  *
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -32,12 +28,14 @@ use tool_flexaccess\local\batch;
 
 $courseid = required_param('courseid', PARAM_INT);
 $action = optional_param('action', '', PARAM_ALPHA);
+$prefillcount = optional_param('count', 0, PARAM_INT);
 
 $course = get_course($courseid);
 require_login($course);
 $context = context_course::instance($courseid);
-batch::require_manage($courseid);
+batch::require_request($courseid);
 
+$canmanage = batch::can_manage($courseid);
 $baseurl = new moodle_url('/admin/tool/flexaccess/coursebatches.php', ['courseid' => $courseid]);
 $PAGE->set_context($context);
 $PAGE->set_url($baseurl);
@@ -45,19 +43,16 @@ $PAGE->set_pagelayout('incourse');
 $PAGE->set_title(get_string('coursebatches', 'tool_flexaccess'));
 $PAGE->set_heading(format_string($course->fullname));
 
-// Create a batch bound to this course.
-if ($action === 'new') {
+// Managers create a batch bound to this course.
+if ($action === 'new' && $canmanage) {
     $form = new \tool_flexaccess\form\coursebatch_form($baseurl->out(false) . '&action=new');
+    if ($prefillcount > 0) {
+        $form->set_data(['count' => $prefillcount]);
+    }
     if ($form->is_cancelled()) {
         redirect($baseurl);
     } else if ($data = $form->get_data()) {
-        batch::create(
-            $data->name,
-            $courseid,
-            (bool) $data->permanent,
-            (int) $data->count,
-            $data->usernameprefix
-        );
+        batch::create($data->name, $courseid, (bool) $data->permanent, (int) $data->count, $data->usernameprefix);
         redirect(
             $baseurl,
             get_string('batch:created', 'tool_flexaccess', $data->count),
@@ -72,18 +67,56 @@ if ($action === 'new') {
     return;
 }
 
+// Teachers without provisioning rights request a batch, which notifies the course's provisioners.
+if ($action === 'request' && !$canmanage) {
+    $form = new \tool_flexaccess\form\coursebatchrequest_form($baseurl->out(false) . '&action=request');
+    if ($form->is_cancelled()) {
+        redirect($baseurl);
+    } else if ($data = $form->get_data()) {
+        $notified = batch::notify_request($courseid, (int) $USER->id, (int) $data->count);
+        $msg = $notified > 0
+            ? get_string('coursebatches_requested', 'tool_flexaccess', $notified)
+            : get_string('coursebatches_requestednorecipients', 'tool_flexaccess');
+        redirect(
+            $baseurl,
+            $msg,
+            null,
+            $notified > 0 ? \core\output\notification::NOTIFY_SUCCESS : \core\output\notification::NOTIFY_WARNING
+        );
+    }
+    echo $OUTPUT->header();
+    echo $OUTPUT->heading(get_string('coursebatches_request', 'tool_flexaccess'));
+    $form->display();
+    echo $OUTPUT->footer();
+    return;
+}
+
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('coursebatches', 'tool_flexaccess'));
 echo html_writer::tag('p', get_string('coursebatches_intro', 'tool_flexaccess'));
 
-echo html_writer::div(
-    $OUTPUT->single_button(
+echo html_writer::start_div('mb-3');
+if ($canmanage) {
+    echo $OUTPUT->single_button(
         new moodle_url($baseurl, ['action' => 'new']),
         get_string('batch:create', 'tool_flexaccess'),
         'get'
-    ),
-    'mb-3'
-);
+    );
+} else {
+    echo $OUTPUT->single_button(
+        new moodle_url($baseurl, ['action' => 'request']),
+        get_string('coursebatches_request', 'tool_flexaccess'),
+        'get'
+    );
+}
+echo html_writer::end_div();
+
+// Teachers without provisioning rights only see the request entry point above.
+if (!$canmanage) {
+    echo $OUTPUT->notification(get_string('coursebatches_requesthint', 'tool_flexaccess'), 'info');
+    echo $OUTPUT->footer();
+    return;
+}
 
 $batches = batch::for_course($courseid);
 if (!$batches) {

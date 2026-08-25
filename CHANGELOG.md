@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.30 — 2026-08-25 — Discoverability A/C/D1/D2/D4/D5/D6
+- **A:** Dashboard zusätzlich unter *Website-Administration → Nutzer/innen → Nutzerkonten* registriert.
+- **C:** `tool/flexaccess:managecoursebatches` jetzt nur noch **Kursmanager + Admin** (nicht mehr editingteacher). Neue Capability `tool/flexaccess:requestbatches` (editingteacher + manager) fürs Beantragen.
+- **D5:** Beantragen von Listen (Teilnehmerzahl) auf der Kurs-Seite; Lehrende ohne Provisionierungsrecht lösen eine Anfrage aus. Benachrichtigung als **E-Mail UND Moodle-Message** (Message-Provider `batchrequest`) an genau die Personen mit Provisionierungsrecht im Kurs-Kontext (`managers_for_course()`), mit Deep-Link zum Erstellen. Neue API `can_request`/`require_request`/`managers_for_course`/`notify_request`.
+- **D6:** In der Batch-Liste je Zeile „im Kurs öffnen" (Link zur Kurs-Seite).
+- Kurs-Navigationsknoten greift jetzt bei `can_request` (Lehrende sehen ihn zum Beantragen). Neues Formular `coursebatchrequest_form`. Tests erweitert (Manager-only manage, teacher request, Empfänger, Message-Versand via Sink).
+- Versions-Gleichschritt auf `2026082407`.
+
 ## 0.9.29 — 2026-08-25 — P2: PHPUnit-11-Migration + Pakete ohne .git
 - `@covers`-Doc-Annotationen der Testklassen auf `#[CoversClass(...)]`-Attribute umgestellt (keine PHPUnit-Deprecations mehr). `.git`-Verzeichnisse aus dem Paket entfernt. Versions-Gleichschritt auf `2026082406`.
 

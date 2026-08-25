@@ -16,17 +16,16 @@
 
 namespace tool_flexaccess;
 
-use PHPUnit\Framework\Attributes\CoversClass;
 use tool_flexaccess\local\batch;
 
 /**
- * Tests for the course-scoped access-list batch management (T2).
+ * Tests for course-scoped access-list batches: management, requests and notifications.
  *
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-#[CoversClass(\tool_flexaccess\local\batch::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(\tool_flexaccess\local\batch::class)]
 final class coursebatches_test extends \advanced_testcase {
     public function test_for_course_scopes_to_the_course(): void {
         $this->resetAfterTest();
@@ -43,7 +42,25 @@ final class coursebatches_test extends \advanced_testcase {
         $this->assertSame(0, batch::count_for_course((int) $c1->id + 999));
     }
 
-    public function test_can_manage_editing_teacher_but_not_student(): void {
+    public function test_manage_is_manager_only_not_teacher(): void {
+        $this->resetAfterTest();
+        $course = $this->getDataGenerator()->create_course();
+        $manager = $this->getDataGenerator()->create_user();
+        $teacher = $this->getDataGenerator()->create_user();
+        $student = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->enrol_user($manager->id, $course->id, 'manager');
+        $this->getDataGenerator()->enrol_user($teacher->id, $course->id, 'editingteacher');
+        $this->getDataGenerator()->enrol_user($student->id, $course->id, 'student');
+
+        $this->setUser($manager);
+        $this->assertTrue(batch::can_manage((int) $course->id));
+        $this->setUser($teacher);
+        $this->assertFalse(batch::can_manage((int) $course->id), 'Editing teachers must not provision directly.');
+        $this->setUser($student);
+        $this->assertFalse(batch::can_manage((int) $course->id));
+    }
+
+    public function test_request_is_available_to_teacher_not_student(): void {
         $this->resetAfterTest();
         $course = $this->getDataGenerator()->create_course();
         $teacher = $this->getDataGenerator()->create_user();
@@ -52,27 +69,41 @@ final class coursebatches_test extends \advanced_testcase {
         $this->getDataGenerator()->enrol_user($student->id, $course->id, 'student');
 
         $this->setUser($teacher);
-        $this->assertTrue(batch::can_manage((int) $course->id));
-
+        $this->assertTrue(batch::can_request((int) $course->id));
         $this->setUser($student);
-        $this->assertFalse(batch::can_manage((int) $course->id));
+        $this->assertFalse(batch::can_request((int) $course->id));
     }
 
-    public function test_require_manage_throws_for_student(): void {
+    public function test_managers_for_course_lists_provisioners_only(): void {
         $this->resetAfterTest();
         $course = $this->getDataGenerator()->create_course();
-        $student = $this->getDataGenerator()->create_user();
-        $this->getDataGenerator()->enrol_user($student->id, $course->id, 'student');
-        $this->setUser($student);
+        $manager = $this->getDataGenerator()->create_user();
+        $teacher = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->enrol_user($manager->id, $course->id, 'manager');
+        $this->getDataGenerator()->enrol_user($teacher->id, $course->id, 'editingteacher');
 
-        $this->expectException(\required_capability_exception::class);
-        batch::require_manage((int) $course->id);
+        $recipients = batch::managers_for_course((int) $course->id);
+        $this->assertArrayHasKey($manager->id, $recipients);
+        $this->assertArrayNotHasKey($teacher->id, $recipients);
     }
 
-    public function test_site_manager_can_manage_any_course(): void {
+    public function test_notify_request_messages_the_provisioners(): void {
         $this->resetAfterTest();
+        $this->preventResetByRollback();
         $course = $this->getDataGenerator()->create_course();
-        $this->setAdminUser();
-        $this->assertTrue(batch::can_manage((int) $course->id));
+        $manager = $this->getDataGenerator()->create_user();
+        $teacher = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->enrol_user($manager->id, $course->id, 'manager');
+        $this->getDataGenerator()->enrol_user($teacher->id, $course->id, 'editingteacher');
+
+        $sink = $this->redirectMessages();
+        $notified = batch::notify_request((int) $course->id, (int) $teacher->id, 12);
+        $messages = $sink->get_messages();
+        $sink->close();
+
+        $this->assertSame(1, $notified);
+        $this->assertCount(1, $messages);
+        $this->assertSame((int) $manager->id, (int) $messages[0]->useridto);
+        $this->assertSame('batchrequest', $messages[0]->eventtype);
     }
 }

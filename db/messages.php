@@ -1,5 +1,5 @@
 <?php
-// This file is part of Moodle - http://moodle.org/
+// This file is part of Moodle - https://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -12,10 +12,10 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+// along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
- * Plugin version definition for tool_flexaccess.
+ * Message providers for tool_flexaccess.
  *
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -24,13 +24,13 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->component = 'tool_flexaccess';
-$plugin->version = 2026082407;
-$plugin->requires = 2024100700; // Moodle 4.5.
-$plugin->supported = [405, 502];
-$plugin->maturity = MATURITY_BETA;
-$plugin->release = '0.9.30';
-$plugin->dependencies = [
-    'auth_flexaccess' => 2026082407,
-    'enrol_flexaccess' => 2026082407,
+$messageproviders = [
+    // A teacher has requested a batch of anonymous access accounts for a course. Sent to the users
+    // who may provision batches for that course (both an email and an in-app message by default).
+    'batchrequest' => [
+        'defaults' => [
+            'popup' => MESSAGE_PERMITTED + MESSAGE_DEFAULT_ENABLED,
+            'email' => MESSAGE_PERMITTED + MESSAGE_DEFAULT_ENABLED,
+        ],
+    ],
 ];

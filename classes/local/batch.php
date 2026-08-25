@@ -120,6 +120,108 @@ final class batch {
     }
 
     /**
+     * Whether the current user may request a batch for the given course.
+     *
+     * Anyone who can create a batch can also (trivially) request one; in addition, an editing
+     * teacher holding tool/flexaccess:requestbatches may request without being able to provision.
+     *
+     * @param int $courseid Course id.
+     * @return bool
+     */
+    public static function can_request(int $courseid): bool {
+        return self::can_manage($courseid)
+            || has_capability('tool/flexaccess:requestbatches', \context_course::instance($courseid));
+    }
+
+    /**
+     * Require that the current user may request a batch for the given course.
+     *
+     * @param int $courseid Course id.
+     * @return void
+     */
+    public static function require_request(int $courseid): void {
+        if (!self::can_request($courseid)) {
+            throw new \required_capability_exception(
+                \context_course::instance($courseid),
+                'tool/flexaccess:requestbatches',
+                'nopermissions',
+                ''
+            );
+        }
+    }
+
+    /**
+     * Users who may provision batches for the given course: course managers holding
+     * managecoursebatches, plus site-level holders of managebatches. Keyed and de-duplicated by id.
+     *
+     * @param int $courseid Course id.
+     * @return array<int, \stdClass> User records keyed by id.
+     */
+    public static function managers_for_course(int $courseid): array {
+        $recipients = get_users_by_capability(
+            \context_course::instance($courseid),
+            'tool/flexaccess:managecoursebatches'
+        );
+        $recipients += get_users_by_capability(
+            \context_system::instance(),
+            'tool/flexaccess:managebatches'
+        );
+        return $recipients;
+    }
+
+    /**
+     * Notify the course's batch provisioners that a list has been requested.
+     *
+     * Sends both an in-app message and an email (per each recipient's messaging preferences) with a
+     * deep link that pre-fills the creation form. Returns the number of recipients notified.
+     *
+     * @param int $courseid Course id.
+     * @param int $requesterid User id of the requester.
+     * @param int $count Requested number of accounts.
+     * @return int Recipients notified.
+     */
+    public static function notify_request(int $courseid, int $requesterid, int $count): int {
+        global $DB;
+        $course = $DB->get_record('course', ['id' => $courseid], 'id, fullname', MUST_EXIST);
+        $requester = \core_user::get_user($requesterid);
+        $coursename = format_string($course->fullname);
+        $createurl = new \moodle_url('/admin/tool/flexaccess/coursebatches.php', [
+            'courseid' => $courseid,
+            'action' => 'new',
+            'count' => $count,
+        ]);
+
+        $a = (object) [
+            'requester' => fullname($requester),
+            'course' => $coursename,
+            'count' => $count,
+        ];
+        $notified = 0;
+        foreach (self::managers_for_course($courseid) as $recipient) {
+            if ((int) $recipient->id === $requesterid) {
+                continue;
+            }
+            $message = new \core\message\message();
+            $message->component = 'tool_flexaccess';
+            $message->name = 'batchrequest';
+            $message->userfrom = $requester;
+            $message->userto = $recipient;
+            $message->subject = get_string('batchrequest:subject', 'tool_flexaccess', $coursename);
+            $message->fullmessage = get_string('batchrequest:body', 'tool_flexaccess', $a);
+            $message->fullmessageformat = FORMAT_PLAIN;
+            $message->fullmessagehtml = text_to_html(get_string('batchrequest:body', 'tool_flexaccess', $a));
+            $message->smallmessage = get_string('batchrequest:small', 'tool_flexaccess', $a);
+            $message->notification = 1;
+            $message->contexturl = $createurl->out(false);
+            $message->contexturlname = get_string('batch:create', 'tool_flexaccess');
+            if (message_send($message)) {
+                $notified++;
+            }
+        }
+        return $notified;
+    }
+
+    /**
      * Total number of batches.
      *
      * @return int

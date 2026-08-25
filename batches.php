@@ -144,7 +144,13 @@ if ($batches) {
     foreach ($batches as $b) {
         $table->data[] = [
             format_string($b->name),
-            isset($courses[$b->courseid]) ? format_string($courses[$b->courseid]->fullname) : ('#' . $b->courseid),
+            isset($courses[$b->courseid])
+                ? html_writer::link(
+                    new moodle_url('/admin/tool/flexaccess/coursebatches.php', ['courseid' => $b->courseid]),
+                    format_string($courses[$b->courseid]->fullname),
+                    ['title' => get_string('batch:openincourse', 'tool_flexaccess')]
+                )
+                : ('#' . $b->courseid),
             get_string($b->permanent ? 'batch:type_permanent' : 'batch:type_temporary', 'tool_flexaccess'),
             $b->membercount,
             html_writer::link(

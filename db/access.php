@@ -63,9 +63,21 @@ $capabilities = [
         'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,
         'archetypes' => ['manager' => CAP_ALLOW],
     ],
-    // Manage anonymous access-list batches for a single course (teacher-facing, course context).
+    // Manage anonymous access-list batches for a single course (course context). Restricted to
+    // course managers and admins - editing teachers can only request lists (see requestbatches).
     'tool/flexaccess:managecoursebatches' => [
         'riskbitmask' => RISK_PERSONAL | RISK_SPAM,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+
+    // Request a batch of anonymous access accounts for a course; the request notifies the users who
+    // may provision them. Available to editing teachers (and managers, who can also create directly).
+    'tool/flexaccess:requestbatches' => [
+        'riskbitmask' => RISK_SPAM,
         'captype' => 'write',
         'contextlevel' => CONTEXT_COURSE,
         'archetypes' => [
