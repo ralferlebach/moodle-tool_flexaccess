@@ -151,8 +151,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/composer
-          key: composer-${ runner.os }-${ github.sha }
-          restore-keys: composer-${ runner.os }-
+          key: composer-${{ runner.os }}-${{ github.sha }}
+          restore-keys: composer-${{ runner.os }}-
       - name: Initialise moodle-plugin-ci
         run: |
           composer create-project -n --no-dev --prefer-dist moodlehq/moodle-plugin-ci ci ^4
@@ -173,21 +173,21 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: npm-${ runner.os }-${ github.sha }
-          restore-keys: npm-${ runner.os }-
+          key: npm-${{ runner.os }}-${{ github.sha }}
+          restore-keys: npm-${{ runner.os }}-
       - name: Grunt (JS / AMD / CSS)
-        if: ${ always() }
+        if: ${{ always() }}
         run: set -o pipefail; moodle-plugin-ci grunt --max-lint-warnings 0 2>&1 | tee ci-logs/grunt.log
       - name: Mustache Lint
-        if: ${ always() }
+        if: ${{ always() }}
         run: set -o pipefail; moodle-plugin-ci mustache 2>&1 | tee ci-logs/mustache.log
       - name: Collect error summary
-        if: ${ always() }
+        if: ${{ always() }}
         run: |
-          { echo "job: lint-jsamd"; echo "status: ${ job.status }"; echo "ref: ${ github.ref }"; echo ""; ls -1 ci-logs; } > ci-logs/summary.txt
+          { echo "job: lint-jsamd"; echo "status: ${{ job.status }}"; echo "ref: ${{ github.ref }}"; echo ""; ls -1 ci-logs; } > ci-logs/summary.txt
           cat ci-logs/summary.txt
       - name: Upload error summary (ZIP)
-        if: ${ always() }
+        if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: error-summary-dev-lint-jsamd
