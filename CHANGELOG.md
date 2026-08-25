@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.33 — 2026-08-25 — Versions-Gleichschritt (enrol: Fix Teilnehmerlisten-Sichtbarkeit)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082410`.
+
 ## 0.9.32 — 2026-08-25 — Versions-Gleichschritt
 - Keine Codeänderung. Versions-Gleichschritt auf `2026082409`.
 
