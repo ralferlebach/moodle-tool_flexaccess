@@ -16,6 +16,7 @@
 
 namespace tool_flexaccess;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use tool_flexaccess\local\batch;
 use tool_flexaccess\local\batch_import;
 
@@ -25,8 +26,8 @@ use tool_flexaccess\local\batch_import;
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \tool_flexaccess\local\batch_import
  */
+#[CoversClass(\tool_flexaccess\local\batch_import::class)]
 final class batch_convert_test extends \advanced_testcase {
     /**
      * Skip when the sibling plugins are not installed.

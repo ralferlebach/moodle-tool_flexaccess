@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.29 — 2026-08-25 — P2: PHPUnit-11-Migration + Pakete ohne .git
+- `@covers`-Doc-Annotationen der Testklassen auf `#[CoversClass(...)]`-Attribute umgestellt (keine PHPUnit-Deprecations mehr). `.git`-Verzeichnisse aus dem Paket entfernt. Versions-Gleichschritt auf `2026082406`.
+
 ## 0.9.28 — 2026-08-25 — P1 T2: kurs-interne Zugangslisten-Verwaltung
 - **T2:** Lehrende verwalten anonyme Zugangslisten jetzt **im Kurs** (`coursebatches.php`): Erstellen, Auflisten und Download (XLSX/PDF-Liste/Karten) für genau diesen Kurs, ohne in die Site-Administration zu wechseln.
 - Neue Kurskontext-Capability `tool/flexaccess:managecoursebatches` (editingteacher + manager). Neue API `batch::for_course()`, `count_for_course()`, `can_manage()`, `require_manage()` (Dual-Kontext: System-`managebatches` ODER Kurs-`managecoursebatches`).

@@ -16,6 +16,7 @@
 
 namespace tool_flexaccess;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use tool_flexaccess\local\batch;
 
 /**
@@ -24,8 +25,8 @@ use tool_flexaccess\local\batch;
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \tool_flexaccess\local\batch
  */
+#[CoversClass(\tool_flexaccess\local\batch::class)]
 final class coursebatches_test extends \advanced_testcase {
     public function test_for_course_scopes_to_the_course(): void {
         $this->resetAfterTest();

@@ -24,12 +24,14 @@
 
 namespace tool_flexaccess;
 
+use PHPUnit\Framework\Attributes\CoversClass;
+
 /**
  * Reference query tests.
  *
  * @package    tool_flexaccess
- * @covers     \tool_flexaccess\local\reference_query
  */
+#[CoversClass(\tool_flexaccess\local\reference_query::class)]
 final class reference_query_test extends \advanced_testcase {
     /**
      * Test valid and invalid reference search terms.

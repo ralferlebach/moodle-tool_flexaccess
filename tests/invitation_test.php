@@ -16,6 +16,7 @@
 
 namespace tool_flexaccess;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use tool_flexaccess\local\invitation;
 
 /**
@@ -24,8 +25,8 @@ use tool_flexaccess\local\invitation;
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \tool_flexaccess\local\invitation
  */
+#[CoversClass(\tool_flexaccess\local\invitation::class)]
 final class invitation_test extends \advanced_testcase {
     /**
      * Create an invitation for a fresh course.
