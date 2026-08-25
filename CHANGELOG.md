@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.31 — 2026-08-25 — Versions-Gleichschritt (enrol: präzisierte Neutralisierungs-Warnung)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082408`.
+
 ## 0.9.30 — 2026-08-25 — Discoverability A/C/D1/D2/D4/D5/D6
 - **A:** Dashboard zusätzlich unter *Website-Administration → Nutzer/innen → Nutzerkonten* registriert.
 - **C:** `tool/flexaccess:managecoursebatches` jetzt nur noch **Kursmanager + Admin** (nicht mehr editingteacher). Neue Capability `tool/flexaccess:requestbatches` (editingteacher + manager) fürs Beantragen.
