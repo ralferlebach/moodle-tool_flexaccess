@@ -25,12 +25,12 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'tool_flexaccess';
-$plugin->version = 2026082412;
+$plugin->version = 2026082414;
 $plugin->requires = 2024100700; // Moodle 4.5.
 $plugin->supported = [405, 502];
 $plugin->maturity = MATURITY_BETA;
-$plugin->release = '0.9.35';
+$plugin->release = '0.9.37';
 $plugin->dependencies = [
-    'auth_flexaccess' => 2026082412,
-    'enrol_flexaccess' => 2026082412,
+    'auth_flexaccess' => 2026082414,
+    'enrol_flexaccess' => 2026082414,
 ];
