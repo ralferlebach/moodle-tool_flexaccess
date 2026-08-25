@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.34 — 2026-08-25 — Versions-Gleichschritt (E-Mail-Login-Methode + Login-UI)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082411`.
+
 ## 0.9.33 — 2026-08-25 — Versions-Gleichschritt (enrol: Fix Teilnehmerlisten-Sichtbarkeit)
 - Keine Codeänderung. Versions-Gleichschritt auf `2026082410`.
 
