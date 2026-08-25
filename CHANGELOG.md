@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.26 — 2026-08-24 — CI: JS/AMD/Mustache-Job wiederhergestellt (catquiz-Form 1:1)
+- `lint-jsamd` (grunt + mustache) in dev wiederhergestellt; Mustache/npm/Grunt in main ergänzt. Kein PHP-Code geändert; Versions-Gleichschritt auf `2026082403`.
+
+## 0.9.25 — 2026-08-24 — CI-Fixes (DB-Versionen, vollständige Geschwister, eine Main-Pipeline)
+- CI: `postgres:13→16`, `mariadb:10.8→10.11`; jede Pipeline installiert alle drei Geschwister (Ökosystem-Tests); `moodle-release.yml` entfernt.
+- Kein PHP-Code geändert; Versions-Gleichschritt auf `2026082402`.
+
+## 0.9.24 — 2026-08-24 — Versions-Gleichschritt (enrol: L3-Kurs-Einstieg + Load-Pläne + CI-Konsolidierung)
+- Keine Codeänderung in diesem Plugin. CI: eine Main-Pipeline (Ökosystem-`main.yml` entfernt); Load-Workflows liegen im Hub `enrol_flexaccess`.
+- Versions-Gleichschritt auf `2026082401`.
+
+## 0.9.23 — 2026-08-24 — Versions-Gleichschritt (enrol: Zugangs-Blocker-Fix + Kopplungscheck)
+- Keine Codeänderung in diesem Plugin; gemeinsamer Versions-Bump auf `2026082400` und aktualisierte Abhängigkeits-Pins.
+- **CI-Fix:** `@package`-Korrektur in `tools/mustache_check.php` und `tools/fix_phpdoc.php` (Copy-Paste-Rest).
+- **CI-Pipeline:** getrennte Dev-/Main-Workflows + dispatch-only JMeter-/k6-Lastworkflows (catquiz-Vorbild, FlexAccess-Geschwister als Abhängigkeit).
+
 ## 0.9.22 — 2026-08-20 — Fix: PHPDoc-Checker (CI) — @param-Vollstaendigkeit
 - **Fix (CI PHPDoc):** Der Moodle-PHPDoc-Checker erkennt generische Array-Typen (`array<...>`, `array{...}`) in `@param` nicht und meldete daher "incomplete parameters list" fuer `batch_export::excel/pdf_list/login_cards`, `batch_import::convert/target_username`. Diese `@param`-Typen auf `array` vereinfacht (Form in der Beschreibung erhalten). Zusaetzlich `invitation::queue_mail`: fehlender `@param $token` ergaenzt (Signatur hat 5 Parameter, Docblock hatte 4). Verwaisten doppelten Docblock vor `invitation::reserve()` entfernt. Keine Logikaenderung.
 
