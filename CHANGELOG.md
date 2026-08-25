@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.32 — 2026-08-25 — Versions-Gleichschritt
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082409`.
+
 ## 0.9.31 — 2026-08-25 — Versions-Gleichschritt (enrol: präzisierte Neutralisierungs-Warnung)
 - Keine Codeänderung. Versions-Gleichschritt auf `2026082408`.
 
