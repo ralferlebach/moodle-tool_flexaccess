@@ -60,7 +60,7 @@ final class policy_presenter_test extends \advanced_testcase {
         $p->availablefrom = 1000;
         $p->availableuntil = 2000;
         $p->maxparticipants = 30;
-        $p->participantvisibility = 'hide';
+        $p->participantlistaccess = 'hide';
         $p->temporaryaccesskeyscope = 'course';
 
         $summary = policy_presenter::summarise($p, true);
@@ -71,7 +71,7 @@ final class policy_presenter_test extends \advanced_testcase {
         $this->assertSame(1000, $summary['availablefrom']);
         $this->assertSame(2000, $summary['availableuntil']);
         $this->assertSame(30, $summary['maxparticipants']);
-        $this->assertSame('hide', $summary['participantvisibility']);
+        $this->assertSame('hide', $summary['participantlistaccess']);
         $this->assertSame('course', $summary['accesskeyscope']);
 
         // No hash/secret key is ever present in the summary.

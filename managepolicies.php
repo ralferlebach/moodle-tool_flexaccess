@@ -50,7 +50,7 @@ if ($existing = ($categoryid > 0 ? \enrol_flexaccess\local\category_policy::load
         'allownormallogin' => (int) $existing->allownormallogin,
         'temporarylifetime' => (int) ($existing->temporarylifetime ?? 0),
         'provisionallifetime' => (int) ($existing->provisionallifetime ?? 0),
-        'participantvisibility' => $existing->participantvisibility,
+        'participantlistaccess' => $existing->participantlistaccess,
     ]);
 } else if ($categoryid > 0) {
     $form->set_data(['categoryid' => $categoryid]);
@@ -75,7 +75,7 @@ if ($form->is_cancelled()) {
         'allownormallogin' => $data->allownormallogin,
         'temporarylifetime' => $data->temporarylifetime,
         'provisionallifetime' => $data->provisionallifetime,
-        'participantvisibility' => $data->participantvisibility,
+        'participantlistaccess' => $data->participantlistaccess,
     ]);
     redirect($returnurl, get_string('policysaved', 'tool_flexaccess'), null, \core\output\notification::NOTIFY_SUCCESS);
 }
@@ -116,7 +116,7 @@ if ($overrides) {
             $flagword((int) $row->allowtemporary),
             $flagword((int) $row->allowquick),
             $flagword((int) $row->allowguest),
-            s(\tool_flexaccess\local\policy_presenter::visibility_label($row->participantvisibility)),
+            s(\tool_flexaccess\local\policy_presenter::visibility_label($row->participantlistaccess)),
             $actions,
         ];
     }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.51 — 2026-08-27 — Coverage- und Maturity-Gate
+- **Neue `tests/coverage.php`** definiert den Coverage-Messumfang dieses Plugins.
+- **Neue CI-Gates** `coverage` (erzwungene Mindest-Line-Coverage) und `maturity-gate` (`MATURITY_STABLE` nur bei durchgehend grünen Release-Gates und dokumentierten Scope-Entscheidungen).
+- Die Maturity bleibt bewusst `MATURITY_BETA`, bis der Reviewer die Blocker unabhängig als geschlossen bestätigt.
+- Versions-Gleichschritt `2026082428`.
+
 ## 0.9.50 — 2026-08-26 — P1-3 Conversion asynchron + Privacy-Tests
 - **Conversion-Import asynchronisiert (P1-3).** Sync-Obergrenze `MAX_SYNC_CONVERT = 100`; größere Importe übernimmt der neue Ad-hoc-Task `convert_batch`, die Seite kehrt sofort zurück.
 - **Kein N+1 mehr:** Die Batch-Mitglieder werden einmal vorab geladen und nach Anmeldename indiziert, statt je Zeile erneut abgefragt zu werden.
