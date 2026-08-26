@@ -36,8 +36,23 @@ final class batch {
     /** Batch member table. */
     private const MEMBER_TABLE = 'tool_flexaccess_batch_member';
 
-    /** Hard upper bound on accounts provisioned in a single synchronous request. */
+    /** Hard upper bound on accounts requested in one batch. */
     private const MAX_SYNC_CREATE = 1000;
+
+    /** Above this many accounts, provisioning is handed to an ad-hoc task instead of the request. */
+    public const SYNC_THRESHOLD = 50;
+
+    /** Provisioning states of a batch. */
+    public const STATUS_QUEUED = 'queued';
+
+    /** Provisioning is running (synchronously or in the ad-hoc task). */
+    public const STATUS_CREATING = 'creating';
+
+    /** All requested accounts exist. */
+    public const STATUS_COMPLETE = 'complete';
+
+    /** Provisioning failed and was rolled back. */
+    public const STATUS_FAILED = 'failed';
 
     /** Unambiguous alphabet for usernames/passwords (no 0/O/1/l/I). */
     private const ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
@@ -362,6 +377,11 @@ final class batch {
     /**
      * Create a batch of accounts, enrol them and record membership.
      *
+     * Small batches are provisioned synchronously. Larger ones (above {@see SYNC_THRESHOLD}) are
+     * handed to an ad-hoc task so the web request never has to create hundreds of accounts: the
+     * batch is returned immediately in status 'queued' and filled in the background. Credentials are
+     * issued separately afterwards, so nothing is lost by not provisioning inline.
+     *
      * @param string $name Batch label.
      * @param int $courseid Target course id.
      * @param bool $permanent Whether to create permanent authenticated accounts.
@@ -370,7 +390,8 @@ final class batch {
      * @param int $passwordlength Password length.
      * @param int|null $timeexpires Expiry for temporary accounts (0/null = plugin default).
      * @param int|null $now Current time.
-     * @return array{batchid:int, credentials:array<string,string>} New batch id and username=>password map.
+     * @return array{batchid:int, credentials:array<string,string>, status:string} Batch id, the
+     *     username=>password map (empty when queued) and the resulting provisioning status.
      */
     public static function create(
         string $name,
@@ -386,20 +407,75 @@ final class batch {
         $now = $now ?? time();
         $count = max(1, min(self::MAX_SYNC_CREATE, $count));
         $prefix = self::sanitise_prefix($usernameprefix);
+        $async = $count > self::SYNC_THRESHOLD;
+
+        $batchid = (int) $DB->insert_record(self::TABLE, (object) [
+            'name' => $name !== '' ? $name : $prefix,
+            'courseid' => $courseid,
+            'permanent' => $permanent ? 1 : 0,
+            'membercount' => 0,
+            'requestedcount' => $count,
+            'status' => $async ? self::STATUS_QUEUED : self::STATUS_CREATING,
+            'timecreated' => $now,
+            'usermodified' => (int) $USER->id,
+        ]);
+
+        if ($async) {
+            $task = new \tool_flexaccess\task\provision_batch();
+            $task->set_custom_data([
+                'batchid' => $batchid,
+                'count' => $count,
+                'permanent' => $permanent,
+                'prefix' => $prefix,
+                'passwordlength' => $passwordlength,
+                'timeexpires' => $timeexpires,
+            ]);
+            \core\task\manager::queue_adhoc_task($task);
+            return ['batchid' => $batchid, 'credentials' => [], 'status' => self::STATUS_QUEUED];
+        }
+
+        $credentials = self::provision_members($batchid, $count, $permanent, $prefix, $passwordlength, $timeexpires, $now);
+        return ['batchid' => $batchid, 'credentials' => $credentials, 'status' => self::STATUS_COMPLETE];
+    }
+
+    /**
+     * Provision the accounts of an existing batch and record them as members.
+     *
+     * Runs inside a transaction so a failure part-way through never leaves a partially provisioned
+     * batch behind; the batch is then marked FAILED and the error re-thrown for the caller (or the
+     * task runner) to report.
+     *
+     * @param int $batchid Batch to fill.
+     * @param int $count Number of accounts to create.
+     * @param bool $permanent Whether to create permanent authenticated accounts.
+     * @param string $prefix Sanitised username prefix.
+     * @param int $passwordlength Password length.
+     * @param int|null $timeexpires Expiry for temporary accounts.
+     * @param int|null $now Current time.
+     * @return array<string,string> Username => plain password map (never persisted).
+     */
+    public static function provision_members(
+        int $batchid,
+        int $count,
+        bool $permanent,
+        string $prefix,
+        int $passwordlength = 10,
+        ?int $timeexpires = null,
+        ?int $now = null
+    ): array {
+        global $DB;
+        $now = $now ?? time();
+        $batch = self::get($batchid);
+        if (!$batch) {
+            throw new \moodle_exception('invalidrecord', 'error');
+        }
+        $courseid = (int) $batch->courseid;
+        $DB->set_field(self::TABLE, 'status', self::STATUS_CREATING, ['id' => $batchid]);
 
         // Wrap the whole provisioning in a transaction: if any account creation/enrolment fails
         // mid-run, the entire batch is rolled back instead of leaving a partial, inconsistent batch.
         $transaction = $DB->start_delegated_transaction();
         try {
-            $batchid = (int) $DB->insert_record(self::TABLE, (object) [
-                'name' => $name !== '' ? $name : $prefix,
-                'courseid' => $courseid,
-                'permanent' => $permanent ? 1 : 0,
-                'membercount' => 0,
-                'timecreated' => $now,
-                'usermodified' => (int) $USER->id,
-            ]);
-
             $credentials = [];
             $created = 0;
             for ($i = 0; $i < $count; $i++) {
@@ -424,20 +500,23 @@ final class batch {
                 $created++;
             }
             $DB->set_field(self::TABLE, 'membercount', $created, ['id' => $batchid]);
+            $DB->set_field(self::TABLE, 'status', self::STATUS_COMPLETE, ['id' => $batchid]);
             $transaction->allow_commit();
         } catch (\Throwable $e) {
             $transaction->rollback($e);
+            // Rollback re-throws, so this is only reached if that ever changes; keep it safe.
+            $DB->set_field(self::TABLE, 'status', self::STATUS_FAILED, ['id' => $batchid]);
             throw $e;
         }
 
-        return ['batchid' => $batchid, 'credentials' => $credentials];
+        return $credentials;
     }
 
     /**
-     * Reset every member's password to a fresh random value and return the new credentials.
+     * Reset every still-managed member's password to a fresh value and return the new credentials.
      *
-     * This is the secure way to re-issue login sheets: plain passwords are never persisted, so a
-     * re-download simply rolls new passwords (safe because batch accounts are freshly provisioned).
+     * This is the secure way to issue login sheets: plain passwords are never persisted, so issuing
+     * always rolls new passwords. Members that have been personalised/converted are skipped (P0-1).
      *
      * @param int $batchid Batch id.
      * @param int $passwordlength Password length.
@@ -458,6 +537,24 @@ final class batch {
             }
         }
         return $credentials;
+    }
+
+    /**
+     * Human-readable provisioning status of a batch, including progress while it is being filled.
+     *
+     * @param \stdClass $batch Batch record.
+     * @return string Localised status label.
+     */
+    public static function status_label(\stdClass $batch): string {
+        $status = (string) ($batch->status ?? self::STATUS_COMPLETE);
+        $label = get_string('batch:status' . $status, 'tool_flexaccess');
+        if ($status === self::STATUS_CREATING || $status === self::STATUS_QUEUED) {
+            $label .= ' (' . get_string('batch:progress', 'tool_flexaccess', (object) [
+                'done' => (int) $batch->membercount,
+                'total' => (int) ($batch->requestedcount ?: $batch->membercount),
+            ]) . ')';
+        }
+        return $label;
     }
 
     /**

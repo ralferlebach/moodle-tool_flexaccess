@@ -46,6 +46,11 @@ $courseid = (int) $batch->courseid;
 // higher-risk right and an explicit, confirmed action - never a silent side effect of a download.
 batch::require_issue($courseid);
 
+// A batch that is still being provisioned has no complete member set to issue credentials for.
+if (($batch->status ?? batch::STATUS_COMPLETE) !== batch::STATUS_COMPLETE) {
+    throw new moodle_exception('batch:notreadyyet', 'tool_flexaccess');
+}
+
 $downloadurl = new moodle_url('/admin/tool/flexaccess/batchdownload.php', ['id' => $id, 'format' => $format]);
 
 if (!$confirm) {

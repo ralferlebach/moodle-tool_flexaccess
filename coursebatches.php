@@ -135,6 +135,7 @@ $table->head = [
     get_string('batch:name', 'tool_flexaccess'),
     get_string('batch:accounttype', 'tool_flexaccess'),
     get_string('batch:members', 'tool_flexaccess'),
+    get_string('batch:status', 'tool_flexaccess'),
     get_string('download'),
 ];
 foreach ($batches as $b) {
@@ -151,7 +152,17 @@ foreach ($batches as $b) {
     $type = $b->permanent
         ? get_string('batch:type_permanent', 'tool_flexaccess')
         : get_string('batch:type_temporary', 'tool_flexaccess');
-    $table->data[] = [format_string($b->name), $type, $b->membercount, $links];
+    // While a batch is still being provisioned there is nothing complete to issue credentials for.
+    if (($b->status ?? batch::STATUS_COMPLETE) !== batch::STATUS_COMPLETE) {
+        $links = '-';
+    }
+    $table->data[] = [
+        format_string($b->name),
+        $type,
+        $b->membercount,
+        batch::status_label($b),
+        $links,
+    ];
 }
 echo html_writer::table($table);
 if ($total > $perpage) {

@@ -61,9 +61,11 @@ if ($action === 'new') {
             $timeexpires,
             $now
         );
+        // Large batches are provisioned in the background; say so instead of implying they exist.
+        $queued = ($result['status'] ?? '') === batch::STATUS_QUEUED;
         redirect(
             new moodle_url($returnurl, ['action' => 'view', 'id' => $result['batchid']]),
-            get_string('batch:created', 'tool_flexaccess', $data->count),
+            get_string($queued ? 'batch:createdqueued' : 'batch:created', 'tool_flexaccess', $data->count),
             null,
             \core\output\notification::NOTIFY_SUCCESS
         );

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.43 — 2026-08-25 — Review-P1: asynchrone Batch-Bereitstellung + CI auf development
+- **Batch-Erstellung asynchron:** Batches über 50 Konten werden nicht mehr im Web-Request erzeugt. `batch::create()` legt den Batch sofort im Status `queued` an und übergibt die Bereitstellung an den neuen Ad-hoc-Task `\tool_flexaccess\task\provision_batch`. Kleine Batches (≤ 50) laufen weiterhin synchron.
+- **Sichtbarer Provisioning-Status:** Neue Felder `status` (`queued`/`creating`/`complete`/`failed`) und `requestedcount` auf `tool_flexaccess_batch` (Upgrade `2026082420`, additiv; Bestandsbatches werden als `complete` markiert). Die Kursliste zeigt Status samt Fortschritt („12 von 200"); Zugangsdaten lassen sich erst nach vollständiger Bereitstellung ausstellen.
+- Die Kernroutine `provision_members()` läuft weiterhin in einer Transaktion — ein Fehler rollt den gesamten Batch zurück, statt einen halb gefüllten zu hinterlassen.
+- **CI:** Dev-Pipeline und Playwright-Workflows ziehen die Geschwister-Plugins jetzt aus **`development`** (verifizierter Branch-Name; alle vier Repos haben `development` und `main`). Die Main-Pipeline bleibt auf `main`.
+- Tests: `batch_async_test` (synchroner Pfad, Queue + Task-Ausführung).
+- Versions-Gleichschritt `2026082420`.
+
 ## 0.9.42 — 2026-08-25 — CI-Fix: Skew-Robustheit gegenüber älteren Geschwister-Plugins
 - **PHPUnit-Fails im CI behoben (Ursache: Sibling-Skew).** Der tool-Job lief mit dem neuen tool-Code, zog aber ein älteres `auth_flexaccess`. Folge: 6 Errors `Call to undefined method auth_flexaccess\api::send_mail_now()` und 1 Failure im Härtungstest.
   - `invitation::queue_mail()` prüft jetzt `method_exists(...,'send_mail_now')` statt nur `class_exists()` — die Klasse existierte ja, nur die Methode fehlte. Bei fehlender API wird **nicht** auf die persistente Queue ausgewichen (das würde den Token at rest speichern, P0-2), sondern `false` zurückgegeben; der Aufrufer meldet den Fehlschlag ehrlich.

@@ -188,5 +188,21 @@ function xmldb_tool_flexaccess_upgrade($oldversion) {
         }
         upgrade_plugin_savepoint(true, 2026082415, 'tool', 'flexaccess');
     }
+    if ($oldversion < 2026082420) {
+        $dbman = $DB->get_manager();
+        $table = new xmldb_table('tool_flexaccess_batch');
+        // Asynchronous provisioning state: how many accounts were requested and how far we got.
+        $requested = new xmldb_field('requestedcount', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'membercount');
+        if (!$dbman->field_exists($table, $requested)) {
+            $dbman->add_field($table, $requested);
+        }
+        $status = new xmldb_field('status', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'complete', 'requestedcount');
+        if (!$dbman->field_exists($table, $status)) {
+            $dbman->add_field($table, $status);
+        }
+        // Existing batches were provisioned synchronously and are therefore complete.
+        $DB->execute("UPDATE {tool_flexaccess_batch} SET requestedcount = membercount WHERE requestedcount = 0");
+        upgrade_plugin_savepoint(true, 2026082420, 'tool', 'flexaccess');
+    }
     return true;
 }
