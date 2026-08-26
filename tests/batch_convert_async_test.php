@@ -25,8 +25,8 @@ use tool_flexaccess\local\batch_import;
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers \tool_flexaccess\local\batch_import
  */
-#[\PHPUnit\Framework\Attributes\CoversClass(\tool_flexaccess\local\batch_import::class)]
 final class batch_convert_async_test extends \advanced_testcase {
     /**
      * Create a batch and return its id plus rows that convert its members.

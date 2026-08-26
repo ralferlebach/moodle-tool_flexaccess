@@ -29,8 +29,8 @@ use tool_flexaccess\privacy\provider;
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers \tool_flexaccess\privacy\provider
  */
-#[\PHPUnit\Framework\Attributes\CoversClass(\tool_flexaccess\privacy\provider::class)]
 final class privacy_batch_test extends \advanced_testcase {
     public function test_batch_membership_yields_a_context(): void {
         $this->resetAfterTest();

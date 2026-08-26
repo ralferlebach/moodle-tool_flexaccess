@@ -16,7 +16,6 @@
 
 namespace tool_flexaccess;
 
-use PHPUnit\Framework\Attributes\CoversClass;
 use tool_flexaccess\local\campaign;
 
 /**
@@ -25,8 +24,8 @@ use tool_flexaccess\local\campaign;
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers \tool_flexaccess\local\campaign
  */
-#[CoversClass(\tool_flexaccess\local\campaign::class)]
 final class campaign_test extends \advanced_testcase {
     /**
      * Create a campaign for a course with the given overrides.

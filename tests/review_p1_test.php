@@ -25,8 +25,8 @@ use tool_flexaccess\local\invitation;
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers \tool_flexaccess\local\batch
  */
-#[\PHPUnit\Framework\Attributes\CoversClass(\tool_flexaccess\local\batch::class)]
 final class review_p1_test extends \advanced_testcase {
     public function test_granular_batch_capabilities_gate_actions(): void {
         $this->resetAfterTest();

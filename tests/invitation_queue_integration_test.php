@@ -28,8 +28,8 @@ use tool_flexaccess\local\invitation;
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers \tool_flexaccess\local\invitation_mail_renderer
  */
-#[\PHPUnit\Framework\Attributes\CoversClass(\tool_flexaccess\local\invitation_mail_renderer::class)]
 final class invitation_queue_integration_test extends \advanced_testcase {
     /**
      * Create a pending invitation for a fresh course.

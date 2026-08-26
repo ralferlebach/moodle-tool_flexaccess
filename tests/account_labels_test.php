@@ -16,7 +16,6 @@
 
 namespace tool_flexaccess;
 
-use PHPUnit\Framework\Attributes\CoversClass;
 use tool_flexaccess\local\account_labels;
 
 /**
@@ -25,8 +24,8 @@ use tool_flexaccess\local\account_labels;
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers \tool_flexaccess\local\account_labels
  */
-#[CoversClass(\tool_flexaccess\local\account_labels::class)]
 final class account_labels_test extends \advanced_testcase {
     /**
      * Known enum values map to localised, non-raw labels.

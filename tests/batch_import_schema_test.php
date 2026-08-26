@@ -27,8 +27,8 @@ use tool_flexaccess\local\batch_import;
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers \tool_flexaccess\local\batch_import
  */
-#[\PHPUnit\Framework\Attributes\CoversClass(\tool_flexaccess\local\batch_import::class)]
 final class batch_import_schema_test extends \advanced_testcase {
     /**
      * Write a workbook with the given data rows, optionally with the schema marker.

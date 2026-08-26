@@ -24,8 +24,8 @@ use tool_flexaccess\local\batch;
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers \tool_flexaccess\local\batch
  */
-#[\PHPUnit\Framework\Attributes\CoversClass(\tool_flexaccess\local\batch::class)]
 final class batch_async_test extends \advanced_testcase {
     public function test_small_batch_is_provisioned_synchronously(): void {
         $this->resetAfterTest();
