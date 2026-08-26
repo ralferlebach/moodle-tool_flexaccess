@@ -25,6 +25,9 @@ use tool_flexaccess\local\batch;
  * through. The batch row is created immediately (status 'queued') and this task fills it, so the
  * user gets an instant response and a visible provisioning state.
  *
+ * Safe to retry: provision_members() only creates the accounts still missing from the batch, so a
+ * task that Moodle re-runs after a failure resumes instead of duplicating accounts or enrolments.
+ *
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later

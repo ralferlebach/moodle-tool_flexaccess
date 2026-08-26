@@ -50,6 +50,9 @@ final class batch_import {
     /** Maximum accepted import file size (2 MiB) - guards the XLSX reader (P0-4). */
     public const MAX_IMPORT_BYTES = 2097152;
 
+    /** Schema marker written to H1 by the exporter; the importer accepts only this format. */
+    public const SCHEMA_VERSION = 'FLEXACCESS-BATCH-V1';
+
     /** Maximum data rows read from an import file, bounding the row iterator (P0-4). */
     public const MAX_IMPORT_ROWS = 2000;
 
@@ -81,17 +84,44 @@ final class batch_import {
      * @return array<int,array{username:string,firstname:string,lastname:string,email:string,newusername:string}>
      */
     public static function parse(string $filepath): array {
-        if (!is_readable($filepath) || filesize($filepath) > self::MAX_IMPORT_BYTES) {
-            throw new \moodle_exception('batchimporttoolarge', 'tool_flexaccess');
+        if (!is_readable($filepath)) {
+            throw new \moodle_exception('batchimportunreadable', 'tool_flexaccess');
+        }
+        if (filesize($filepath) > self::MAX_IMPORT_BYTES) {
+            throw new \moodle_exception(
+                'batchimporttoolarge',
+                'tool_flexaccess',
+                '',
+                (object) ['limit' => display_size(self::MAX_IMPORT_BYTES)]
+            );
         }
         $reader = IOFactory::createReader('Xlsx');
         $reader->setReadDataOnly(true);
-        $spreadsheet = $reader->load($filepath);
+        try {
+            $spreadsheet = $reader->load($filepath);
+        } catch (\Throwable $e) {
+            // A corrupt or non-XLSX payload must fail with a clear message, not a raw library error.
+            throw new \moodle_exception('batchimportunreadable', 'tool_flexaccess');
+        }
         $sheet = $spreadsheet->getActiveSheet();
+
+        // Strict schema check: the export writes a machine-readable marker, so an arbitrary or
+        // hand-built spreadsheet is rejected rather than silently misinterpreted column by column.
+        $marker = trim((string) $sheet->getCell('H1')->getValue());
+        if ($marker !== self::SCHEMA_VERSION) {
+            throw new \moodle_exception(
+                'batchimportbadschema',
+                'tool_flexaccess',
+                '',
+                (object) ['expected' => self::SCHEMA_VERSION]
+            );
+        }
 
         $rows = [];
         $first = true;
-        foreach ($sheet->getRowIterator(1, self::MAX_IMPORT_ROWS + 1) as $row) {
+        // One row beyond the limit is read on purpose: if it carries data the file is too big, and
+        // the import is refused instead of silently dropping records.
+        foreach ($sheet->getRowIterator(1, self::MAX_IMPORT_ROWS + 2) as $row) {
             if ($first) {
                 $first = false;
                 continue;
@@ -105,6 +135,14 @@ final class batch_import {
             $username = \core_text::strtolower($cells['A'] ?? '');
             if ($username === '') {
                 continue;
+            }
+            if (count($rows) >= self::MAX_IMPORT_ROWS) {
+                throw new \moodle_exception(
+                    'batchimporttoomanyrows',
+                    'tool_flexaccess',
+                    '',
+                    (object) ['max' => self::MAX_IMPORT_ROWS]
+                );
             }
             $rows[] = [
                 'username' => $username,

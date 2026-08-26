@@ -50,6 +50,13 @@ final class batch_export {
             get_string('batchcol_profilefields', 'tool_flexaccess'),
             get_string('batchcol_newusername', 'tool_flexaccess'),
         ];
+        // Machine-readable schema marker: the header labels are localised, so the importer must not
+        // have to guess the language. Written outside the data columns (A-G).
+        $sheet->setCellValueExplicit(
+            'H1',
+            batch_import::SCHEMA_VERSION,
+            \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+        );
         $col = 1;
         foreach ($headers as $h) {
             $sheet->setCellValueExplicit(

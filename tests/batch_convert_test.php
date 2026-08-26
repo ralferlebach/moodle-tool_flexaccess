@@ -174,6 +174,7 @@ final class batch_convert_test extends \advanced_testcase {
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->fromArray([['User', 'Pass', 'First', 'Last', 'Email', 'Profile', 'NewUser']], null, 'A1');
+        $sheet->setCellValue('H1', batch_import::SCHEMA_VERSION);
         $sheet->fromArray([['Kurs-ABC', 'pw', 'Max', 'Muster', 'Max@Example.com', '', 'MaxM']], null, 'A2');
         $sheet->fromArray([['', '', '', '', '', '', '']], null, 'A3');
         $path = make_request_directory() . '/import.xlsx';

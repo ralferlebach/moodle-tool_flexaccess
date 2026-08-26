@@ -39,6 +39,9 @@ final class batch {
     /** Hard upper bound on accounts requested in one batch. */
     private const MAX_SYNC_CREATE = 1000;
 
+    /** Accounts provisioned before committing progress, keeping each unit of work small. */
+    public const PROVISION_CHUNK = 50;
+
     /** Above this many accounts, provisioning is handed to an ad-hoc task instead of the request. */
     public const SYNC_THRESHOLD = 50;
 
@@ -439,14 +442,21 @@ final class batch {
     }
 
     /**
-     * Provision the accounts of an existing batch and record them as members.
+     * Provision the still-missing accounts of a batch and record them as members.
      *
-     * Runs inside a transaction so a failure part-way through never leaves a partially provisioned
-     * batch behind; the batch is then marked FAILED and the error re-thrown for the caller (or the
-     * task runner) to report.
+     * Idempotent and resumable: only the difference between the requested count and the members
+     * that already exist is created, so a retried ad-hoc task resumes instead of producing
+     * duplicate accounts or enrolments. `membercount` is written after each chunk, so it reflects
+     * real committed progress rather than a guess.
+     *
+     * Deliberately NOT wrapped in one big transaction. A transaction spanning up to 1000 user
+     * creations would be held open far too long, and Moodle's rollback() re-throws - which would
+     * make the FAILED state unreachable and leave a failed batch stuck on CREATING forever.
+     * Instead each member is written only after its account and enrolment succeeded, so an
+     * interrupted run leaves a smaller but consistent batch that the retry simply completes.
      *
      * @param int $batchid Batch to fill.
-     * @param int $count Number of accounts to create.
+     * @param int $count Total number of accounts the batch should end up with.
      * @param bool $permanent Whether to create permanent authenticated accounts.
      * @param string $prefix Sanitised username prefix.
      * @param int $passwordlength Password length.
@@ -471,45 +481,70 @@ final class batch {
         }
         $courseid = (int) $batch->courseid;
         $DB->set_field(self::TABLE, 'status', self::STATUS_CREATING, ['id' => $batchid]);
+        $DB->set_field(self::TABLE, 'statusmessage', null, ['id' => $batchid]);
 
-        // Wrap the whole provisioning in a transaction: if any account creation/enrolment fails
-        // mid-run, the entire batch is rolled back instead of leaving a partial, inconsistent batch.
-        $transaction = $DB->start_delegated_transaction();
+        $existing = $DB->count_records(self::MEMBER_TABLE, ['batchid' => $batchid]);
+        $missing = max(0, $count - $existing);
+        $credentials = [];
+
         try {
-            $credentials = [];
-            $created = 0;
-            for ($i = 0; $i < $count; $i++) {
-                $username = self::unique_username($prefix);
-                $password = self::generate_password($passwordlength);
-                $userid = \auth_flexaccess\api::create_batch_account(
-                    $username,
-                    $password,
-                    '',
-                    '',
-                    $permanent,
-                    $timeexpires,
-                    $now
-                );
-                \enrol_flexaccess\local\enrol_service::admin_enrol($courseid, $userid, !$permanent, $now);
-                $DB->insert_record(self::MEMBER_TABLE, (object) [
-                    'batchid' => $batchid,
-                    'userid' => $userid,
-                    'username' => $username,
-                ]);
-                $credentials[$username] = $password;
-                $created++;
+            while ($missing > 0) {
+                $chunk = min(self::PROVISION_CHUNK, $missing);
+                $made = 0;
+                for ($i = 0; $i < $chunk; $i++) {
+                    $username = self::unique_username($prefix);
+                    $password = self::generate_password($passwordlength);
+                    $userid = \auth_flexaccess\api::create_batch_account(
+                        $username,
+                        $password,
+                        '',
+                        '',
+                        $permanent,
+                        $timeexpires,
+                        $now
+                    );
+                    \enrol_flexaccess\local\enrol_service::admin_enrol($courseid, $userid, !$permanent, $now);
+                    $DB->insert_record(self::MEMBER_TABLE, (object) [
+                        'batchid' => $batchid,
+                        'userid' => $userid,
+                        'username' => $username,
+                    ]);
+                    $credentials[$username] = $password;
+                    $made++;
+                }
+                $existing += $made;
+                $DB->set_field(self::TABLE, 'membercount', $existing, ['id' => $batchid]);
+                $missing -= $made;
             }
-            $DB->set_field(self::TABLE, 'membercount', $created, ['id' => $batchid]);
-            $DB->set_field(self::TABLE, 'status', self::STATUS_COMPLETE, ['id' => $batchid]);
-            $transaction->allow_commit();
         } catch (\Throwable $e) {
-            $transaction->rollback($e);
-            // Rollback re-throws, so this is only reached if that ever changes; keep it safe.
-            $DB->set_field(self::TABLE, 'status', self::STATUS_FAILED, ['id' => $batchid]);
+            self::mark_failed($batchid, $e);
             throw $e;
         }
 
+        $DB->set_field(self::TABLE, 'membercount', $existing, ['id' => $batchid]);
+        $DB->set_field(self::TABLE, 'status', self::STATUS_COMPLETE, ['id' => $batchid]);
         return $credentials;
+    }
+
+    /**
+     * Record that provisioning failed, together with the reason.
+     *
+     * Runs outside any transaction, so the state is guaranteed to persist: a failed batch must
+     * never stay on CREATING, which would look like work still in progress that never finishes.
+     *
+     * @param int $batchid Batch id.
+     * @param \Throwable $e The failure.
+     * @return void
+     */
+    private static function mark_failed(int $batchid, \Throwable $e): void {
+        global $DB;
+        $DB->set_field(self::TABLE, 'status', self::STATUS_FAILED, ['id' => $batchid]);
+        $DB->set_field(
+            self::TABLE,
+            'statusmessage',
+            \core_text::substr($e->getMessage(), 0, 255),
+            ['id' => $batchid]
+        );
     }
 
     /**
@@ -548,7 +583,13 @@ final class batch {
     public static function status_label(\stdClass $batch): string {
         $status = (string) ($batch->status ?? self::STATUS_COMPLETE);
         $label = get_string('batchstatus' . $status, 'tool_flexaccess');
-        if ($status === self::STATUS_CREATING || $status === self::STATUS_QUEUED) {
+        if ($status === self::STATUS_FAILED && !empty($batch->statusmessage)) {
+            // Show the administrator why it failed instead of a bare "failed".
+            $label .= ' (' . s((string) $batch->statusmessage) . ')';
+        }
+        // Progress is only shown while work is actually running: membercount is committed per
+        // chunk, so the number is real. A queued batch has not started and gets no fake counter.
+        if ($status === self::STATUS_CREATING) {
             $label .= ' (' . get_string('batchprogress', 'tool_flexaccess', (object) [
                 'done' => (int) $batch->membercount,
                 'total' => (int) ($batch->requestedcount ?: $batch->membercount),
