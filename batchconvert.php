@@ -29,18 +29,20 @@ use tool_flexaccess\local\batch_import;
 
 require_login();
 $context = context_system::instance();
-require_capability('tool/flexaccess:managebatches', $context);
 
 $id = required_param('id', PARAM_INT);
 $batch = batch::get($id);
 if (!$batch) {
     redirect(new moodle_url('/admin/tool/flexaccess/batches.php'));
 }
+// Converting batch accounts is a granular, course-scoped right (managebatches/managecoursebatches
+// still grant it for backward compatibility).
+batch::require_convert((int) $batch->courseid);
 
 $PAGE->set_context($context);
 $PAGE->set_url(new moodle_url('/admin/tool/flexaccess/batchconvert.php', ['id' => $id]));
 $PAGE->set_pagelayout('admin');
-$PAGE->set_title(get_string('batch:convert', 'tool_flexaccess'));
+$PAGE->set_title(get_string('batchconvert', 'tool_flexaccess'));
 $PAGE->set_heading(get_string('pluginname', 'tool_flexaccess'));
 
 $viewurl = new moodle_url('/admin/tool/flexaccess/batches.php', ['action' => 'view', 'id' => $id]);
@@ -54,12 +56,25 @@ if ($form->is_cancelled()) {
     $form->save_file('excelfile', $path, true);
 
     $rows = batch_import::parse($path);
-    $result = batch_import::convert($id, $rows, $data->usernamerule, time());
+    // Small imports run inline; large ones are handed to an ad-hoc task so the request returns.
+    $result = batch_import::convert_dispatch($id, $rows, $data->usernamerule, time());
 
     echo $OUTPUT->header();
-    echo $OUTPUT->heading(get_string('batch:convert', 'tool_flexaccess'));
+    echo $OUTPUT->heading(get_string('batchconvert', 'tool_flexaccess'));
+    if (!empty($result['queued'])) {
+        echo $OUTPUT->notification(
+            get_string('batchconvertqueued', 'tool_flexaccess', count($rows)),
+            \core\output\notification::NOTIFY_INFO
+        );
+        echo $OUTPUT->continue_button(new moodle_url('/admin/tool/flexaccess/batches.php', [
+            'action' => 'view',
+            'id' => $id,
+        ]));
+        echo $OUTPUT->footer();
+        die;
+    }
     echo $OUTPUT->notification(
-        get_string('batch:convertsummary', 'tool_flexaccess', (object) [
+        get_string('batchconvertsummary', 'tool_flexaccess', (object) [
             'converted' => $result['converted'],
             'skipped' => $result['skipped'],
         ]),
@@ -78,7 +93,7 @@ if ($form->is_cancelled()) {
 }
 
 echo $OUTPUT->header();
-echo $OUTPUT->heading(get_string('batch:convert', 'tool_flexaccess'));
-echo html_writer::tag('p', get_string('batch:convert_intro', 'tool_flexaccess'));
+echo $OUTPUT->heading(get_string('batchconvert', 'tool_flexaccess'));
+echo html_writer::tag('p', get_string('batchconvert_intro', 'tool_flexaccess'));
 $form->display();
 echo $OUTPUT->footer();

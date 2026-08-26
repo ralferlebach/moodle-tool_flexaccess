@@ -1,5 +1,175 @@
 # Changelog
 
+## 0.9.53 — 2026-08-27 — Main-Pipeline: zwei Gates waren konstruktiv falsch
+- **Lockstep-Gate blockierte jeden Rollout.** Vier getrennte Repositories lassen sich nur nacheinander pushen; das Gate verlangte aber bei **jedem** Branch-Push identische Versionen aller vier — die ersten drei Pushes waren damit zwangsläufig rot. Es blockiert jetzt nur noch dort, wo „gemeinsam released" tatsächlich behauptet wird: auf einem **Tag**. Auf Branch-Pushes wird ein Versionsunterschied als Warnung berichtet, nicht als Fehler.
+- **Coverage-Gate maß das falsche Ziel.** `--coverage-text` berichtet die Abdeckung des **gesamten Moodle-Baums** (im Lauf: 2,23 %, weil der Core die Zeilenzahl dominiert) — über dieses Plugin sagt das nichts, und der Mindestwert konnte nie erreicht werden. Die Messung läuft jetzt über **Clover-XML** und wertet mit `tools/coverage_gate.php` ausschließlich die Dateien dieses Plugins aus (ohne die Tests selbst). Fehlt der Report oder enthält er keine Plugin-Datei, schlägt das Gate fehl statt still durchzuwinken.
+- Versions-Gleichschritt `2026082430`.
+
+## 0.9.52 — 2026-08-27 — CI-Fix: Coverage-Konfiguration war nicht 4.5-kompatibel
+- **Alle PHPUnit- und Behat-Jobs scheiterten an `Class "core\test\phpunit\coverage_info" not found`.** Die in 0.9.51 eingeführte `tests/coverage.php` verwendete den **namespaced** Klassennamen; den gibt es erst ab Moodle 5.x. Auf dem unterstützten Moodle 4.5 heißt die Klasse `phpunit_coverage_info`. Sie wird jetzt über diesen globalen Namen abgeleitet — auf 4.5 ist das die Klasse selbst, auf 5.x ein gepflegter Alias, also für alle unterstützten Versionen korrekt.
+- **Neue Datei `db/removed_files.txt` und neuer CI-Job `stale-files`.** Ein Plugin-Update per ZIP fügt Dateien hinzu und überschreibt sie, **löscht aber nie**. In früheren Releases entfernte Dateien überleben deshalb in einer Installation oder in einem so aktualisierten Repository — mit Folgen wie doppelten Klassen (phpcpd) oder Zugriffen auf nicht mehr existierende Spalten. Der Job schlägt fehl, solange eine gelistete Datei noch vorhanden ist, statt die Ursache in Folgefehlern zu verstecken. In Dev- **und** Main-Pipeline verdrahtet, `ci-complete` hängt daran.
+- Versions-Gleichschritt `2026082429`.
+
+## 0.9.51 — 2026-08-27 — Coverage- und Maturity-Gate
+- **Neue `tests/coverage.php`** definiert den Coverage-Messumfang dieses Plugins.
+- **Neue CI-Gates** `coverage` (erzwungene Mindest-Line-Coverage) und `maturity-gate` (`MATURITY_STABLE` nur bei durchgehend grünen Release-Gates und dokumentierten Scope-Entscheidungen).
+- Die Maturity bleibt bewusst `MATURITY_BETA`, bis der Reviewer die Blocker unabhängig als geschlossen bestätigt.
+- Versions-Gleichschritt `2026082428`.
+
+## 0.9.50 — 2026-08-26 — P1-3 Conversion asynchron + Privacy-Tests
+- **Conversion-Import asynchronisiert (P1-3).** Sync-Obergrenze `MAX_SYNC_CONVERT = 100`; größere Importe übernimmt der neue Ad-hoc-Task `convert_batch`, die Seite kehrt sofort zurück.
+- **Kein N+1 mehr:** Die Batch-Mitglieder werden einmal vorab geladen und nach Anmeldename indiziert, statt je Zeile erneut abgefragt zu werden.
+- **Idempotent:** Bereits konvertierte Mitglieder werden übersprungen. Ein wiederholter Lauf (etwa ein von Moodle erneut ausgeführter Task) erzeugt damit keine zweite Identitätsumstellung und **keine doppelte Set-Password-Mail**.
+- **Teilfehler mitgliedsbezogen:** Neues Feld `converterror` auf `tool_flexaccess_batch_member` (Upgrade `2026082427`, additiv) hält je Mitglied fest, warum die Umwandlung scheiterte — statt nur einer Gesamtzahl bei 2000 Zeilen.
+- **Fortschritt sichtbar:** Neuer Status `converting`, Fortschritt wird alle 25 Zeilen zurückgeschrieben und in der Liste angezeigt.
+- **Privacy-Tests für Batchdaten** (`privacy_batch_test`): Mitgliedschaft liefert einen Context, wird exportiert und beim Löschen des Contexts vollständig entfernt.
+- Tests: `batch_convert_async_test` (Retry ohne Doppelmails, Hintergrundlauf, zeilenbezogener Fehler).
+- Versions-Gleichschritt `2026082427`.
+
+## 0.9.49 — 2026-08-26 — CI-Fix: XMLDB-Debugmeldung beim Kampagnen-Token
+- **CI-Blocker behoben.** Das in 0.9.48 eingeführte Feld `tokenhash` war als `CHAR NOT NULL` mit `DEFAULT=""` deklariert. XMLDB gibt dafür eine Debug-Meldung aus und korrigiert den Default stillschweigend; `moodle-plugin-ci` wertet jede Debug-Meldung während der PHPUnit-Initialisierung als Fehler. Dadurch scheiterte der Install-Schritt in **allen vier** Repositories (die Geschwister-Plugins werden ja mitinstalliert) — die Quality-Jobs mit `--no-init` liefen weiterhin durch, was das Bild verschleierte. Feld und Upgrade-Schritt deklarieren jetzt keinen Default mehr.
+- Versions-Gleichschritt `2026082426`.
+
+## 0.9.48 — 2026-08-26 — Review 0.9.44: P1-7, P1-8, P1-9 + Scope-Entscheidungen
+- **P1-9 Campaign-Token nicht mehr im Klartext gespeichert.** Der Token ist ein Bearer-Secret: Wer ihn hat, kann die Kampagne einlösen. Gespeichert wird jetzt nur noch `tokenhash` (SHA-256); die Klartextspalte wird beim Upgrade migriert und **gelöscht** (Savepoint `2026082425`, inkl. Umstellung des Unique-Index). Bestehende Links funktionieren weiter. Der Link wird genau **einmal** bei Erstellung angezeigt und lässt sich nicht wiederherstellen, nur rotieren; die Rotation entwertet den bisherigen Link sofort. Test `test_rotate_invalidates_the_previous_link`.
+- **P1-7 Alle übrigen state-changing Aktionen laufen über POST:** Invitation Send/Remind/Revoke, Campaign Delete (mit Bestätigung), Campaign-Link-Rotation (mit Bestätigung) und Policy Delete. Aktionen werden als POST-Buttons statt als Links gerendert; serverseitig wird zusätzlich `REQUEST_METHOD === 'POST'` geprüft. Keine Datei mit `confirm_sesskey()` bleibt ohne POST-Guard.
+- **Scope-Entscheidungen dokumentiert** (`docs/scope-decisions-1.0.md`): Die ursprüngliche Anforderung „temporäre Nutzer für andere ausblenden" wird aus dem 1.0-Scope genommen (kein stabiler Moodle-Erweiterungspunkt, kein Core-Hack); Restriktionen sind für 1.0 nur im Kurs-Scope administrierbar, die Engine wertet System- und Kategorieregeln weiterhin aus.
+- `docs/review-0.9.35-status.md` um den vollständigen Stand der 0.9.44-DoD ergänzt.
+- Versions-Gleichschritt `2026082425`.
+
+## 0.9.47 — 2026-08-26 — Review 0.9.44: P1-1, P1-2, P1-4 + Artefakt-Release-Gate
+- **P1-1 Fehlgeschlagene Bereitstellung erreicht jetzt zuverlässig `FAILED`.** Der bisherige Code setzte den Status nach `$transaction->rollback($e)` — Moodle wirft dort erneut, die Zeile war unerreichbar, ein gescheiterter Batch blieb dauerhaft auf `CREATING`. Die große Transaktion ist ersatzlos entfallen: Jede Mitgliedszeile wird erst geschrieben, nachdem Konto **und** Einschreibung erfolgreich waren, sodass ein Abbruch einen kleineren, aber konsistenten Batch hinterlässt. Der Fehlerzustand wird garantiert persistiert, samt Grund im neuen Feld `statusmessage` (Upgrade `2026082424`, additiv).
+- **P1-1 Retry ist idempotent:** `provision_members()` erzeugt nur noch die *fehlenden* Konten (Differenz aus Sollzahl und vorhandenen Mitgliedern). Ein von Moodle wiederholter Ad-hoc-Task setzt damit fort, statt Konten und Einschreibungen zu duplizieren.
+- **P1-2 Fortschritt ist echt statt vorgetäuscht:** `membercount` wird nach jedem Chunk (50) festgeschrieben; die Kursliste zeigt einen Fortschritt nur noch für `creating` — ein `queued`-Batch bekommt keinen Fake-Zähler. Bei `failed` wird der Fehlergrund angezeigt. Keine Transaktion mehr über bis zu 1000 Nutzeranlagen.
+- **P1-4 XLSX-Import strikt validiert, keine stille Trunkierung:** Der Export schreibt eine maschinenlesbare Schema-Kennung (`FLEXACCESS-BATCH-V1`, Zelle H1), die der Import strikt prüft — die Kopfzeile allein wäre sprachabhängig. Zu große Dateien, unlesbare/beschädigte Arbeitsmappen, fremde Dateien und **mehr als 2000 Datenzeilen** werden jetzt mit verständlicher Meldung **abgelehnt**, statt Datensätze stillschweigend zu verwerfen.
+- Tests: `batch_failure_test` (Fehlerinjektion → `FAILED` mit Grund; Retry ohne Duplikate; Chunk-Fortschritt), `batch_import_schema_test` (fehlende Schema-Kennung, beschädigte Datei, 2001 Zeilen, künstlich aufgeblähter Row-Index).
+- Versions-Gleichschritt `2026082424`.
+
+## 0.9.46 — 2026-08-26 — Review 0.9.44: die drei P0-Blocker geschlossen
+- **P0-2 Invitations laufen wieder über die zentrale Mailqueue — und bleiben secret-free.** Der Sofortversand hatte zwar den Klartext-Token beseitigt, umging aber Stundenlimit, Retry/Backoff und Queue-Monitoring. Neu: eine *semantische, secret-freie* Queue-Zeile, die nur Renderer-Klasse und Einladungs-ID enthält (`kind: deferred`). Der neue `invitation_mail_renderer` erzeugt den Token erst im Worker unmittelbar vor dem Versand; `timesent`/`timereminded`/`remindercount` werden ausschließlich nach **tatsächlicher** Zustellung gestempelt. Eine zwischenzeitlich widerrufene oder abgelaufene Einladung erzeugt beim Zustellversuch gar keinen Token mehr.
+- **P0-3 Credential-Ausgabe nur noch per POST.** Die Bestätigung ist jetzt ein `single_button` mit `method=post`; zusätzlich wird `confirm` serverseitig nur bei `REQUEST_METHOD === 'POST'` akzeptiert. Ein state-changing GET (Prefetch, Crawler, geteilter Link) kann damit keine Passwortrotation mehr auslösen.
+- **P0-1 (Mitwirkung):** CLI-Guard (`PHP_SAPI !== 'cli'` → 403) in allen `tools/`-Skripten, platziert **vor** jedem Schreibzugriff — zweite Verteidigungslinie, falls eine Kopie doch auf einem web-erreichbaren Pfad landet.
+- Tests: `invitation_queue_integration_test` weist nach, dass Einladungen dem Stundenlimit unterliegen (bei erschöpftem Budget bleibt die zweite Einladung in der Queue) und dass eine widerrufene Einladung keinen Token mehr erzeugt; die Invitation-Tests bilden jetzt durchgehend die Queue-Semantik ab.
+- Versions-Gleichschritt `2026082423`.
+
+## 0.9.45 — 2026-08-26 — Review vollständig abgeschlossen
+- **Bugfix:** Der Message-Provider `batchrequest` hatte keinen `messageprovider:batchrequest`-Sprachstring und erschien in den Mitteilungseinstellungen als `[[messageprovider:batchrequest]]`. Beim Vereinheitlichen der String-IDs aufgefallen, zur Laufzeit reproduziert und behoben (en + de).
+- **String-IDs vereinheitlicht** (Colon → flach für allgemeine UI-Strings; Capability-, Privacy- und Message-Provider-Keys behalten konventionsgemäß den Doppelpunkt).
+- **`docs/review-0.9.35-status.md` aktualisiert:** Alle Punkte des externen Reviews sind abgearbeitet; es bestehen keine Rückstellungen mehr.
+- Versions-Gleichschritt `2026082422`.
+
+## 0.9.44 — 2026-08-25 — Review-Abschluss + Nachweisdokument
+- **Neu: `docs/review-0.9.35-status.md`** — vollständiger Abarbeitungsstand des externen Reviews: alle P0 und alle P1 geschlossen, P2 überwiegend geschlossen, drei Punkte mit Begründung bewusst zurückgestellt (String-ID-Konvention, weitere Aufteilung der Auth-Fassade, Concurrency-/DAST-Tests). Dient als Nachweisgrundlage für die Freigabeentscheidung.
+- **CI-Release-Gate** `ecosystem-lockstep` (siehe enrol-CHANGELOG).
+- Versions-Gleichschritt `2026082421`.
+
+## 0.9.43 — 2026-08-25 — Review-P1: asynchrone Batch-Bereitstellung + CI auf development
+- **Batch-Erstellung asynchron:** Batches über 50 Konten werden nicht mehr im Web-Request erzeugt. `batch::create()` legt den Batch sofort im Status `queued` an und übergibt die Bereitstellung an den neuen Ad-hoc-Task `\tool_flexaccess\task\provision_batch`. Kleine Batches (≤ 50) laufen weiterhin synchron.
+- **Sichtbarer Provisioning-Status:** Neue Felder `status` (`queued`/`creating`/`complete`/`failed`) und `requestedcount` auf `tool_flexaccess_batch` (Upgrade `2026082420`, additiv; Bestandsbatches werden als `complete` markiert). Die Kursliste zeigt Status samt Fortschritt („12 von 200"); Zugangsdaten lassen sich erst nach vollständiger Bereitstellung ausstellen.
+- Die Kernroutine `provision_members()` läuft weiterhin in einer Transaktion — ein Fehler rollt den gesamten Batch zurück, statt einen halb gefüllten zu hinterlassen.
+- **CI:** Dev-Pipeline und Playwright-Workflows ziehen die Geschwister-Plugins jetzt aus **`development`** (verifizierter Branch-Name; alle vier Repos haben `development` und `main`). Die Main-Pipeline bleibt auf `main`.
+- Tests: `batch_async_test` (synchroner Pfad, Queue + Task-Ausführung).
+- Versions-Gleichschritt `2026082420`.
+
+## 0.9.42 — 2026-08-25 — CI-Fix: Skew-Robustheit gegenüber älteren Geschwister-Plugins
+- **PHPUnit-Fails im CI behoben (Ursache: Sibling-Skew).** Der tool-Job lief mit dem neuen tool-Code, zog aber ein älteres `auth_flexaccess`. Folge: 6 Errors `Call to undefined method auth_flexaccess\api::send_mail_now()` und 1 Failure im Härtungstest.
+  - `invitation::queue_mail()` prüft jetzt `method_exists(...,'send_mail_now')` statt nur `class_exists()` — die Klasse existierte ja, nur die Methode fehlte. Bei fehlender API wird **nicht** auf die persistente Queue ausgewichen (das würde den Token at rest speichern, P0-2), sondern `false` zurückgegeben; der Aufrufer meldet den Fehlschlag ehrlich.
+  - `invitation_test` überspringt die betroffenen Tests mit klarer Begründung statt zu scheitern.
+  - `batch_credential_lifecycle_test` überspringt den Härtungstest, wenn das installierte `auth_flexaccess` älter als `2026082415` ist (die Härtung lebt dort).
+- Versions-Gleichschritt `2026082419`.
+
+## 0.9.41 — 2026-08-25 — Review-P1/P2: Test-Gates, Pagination, Rechte-Feinschliff
+- **Kurs-Batchliste:** Ansicht hängt jetzt an `viewcoursebatches` (bisher nur bei Erstellrecht sichtbar) und ist **paginiert** (50 pro Seite, `paging_bar`) — vorher unbegrenzt.
+- **Playwright-Workflow** installiert alle vier Geschwister-Plugins und nutzt `npm ci` (siehe unten).
+- Versions-Gleichschritt `2026082418`.
+
+## 0.9.40 — 2026-08-25 — Review-P1: Batch-Reliability/-Rechte, Invitation-UX
+- **Credential-Ausgabe vom Download getrennt:** Das Ausstellen von Batch-Zugangsdaten rotiert Passwörter und ist jetzt eine explizite, **bestätigte** Aktion (Confirm-Seite, POST + sesskey) statt stiller Nebeneffekt eines Downloads. Konvertierte/personalisierte Konten bleiben unberührt (P0-1).
+- **Granulare Batch-Capabilities:** Neue kurskontext-Capabilities `viewcoursebatches`, `createcoursebatches`, `issuebatchcredentials`, `convertbatchaccounts`. Verdrahtet an Anlegen (coursebatches), Ausstellen (batchdownload) und Umwandeln (batchconvert). Rückwärtskompatibel: `managebatches` (System) und das bisherige `managecoursebatches` gewähren weiterhin alle Rechte.
+- **Batch-Erstellung failure-safe:** `batch::create()` läuft in einer Transaktion — ein Fehler mittendrin rollt den gesamten Batch zurück (kein Teil-Batch). Obergrenze als `MAX_SYNC_CREATE` benannt.
+- **Invitation `revoke()`** liefert jetzt `bool`; die UI meldet Erfolg nur, wenn tatsächlich widerrufen wurde (kein irreführendes „widerrufen" bei bereits angenommenen/reservierten Einladungen).
+- **Mehrfach-E-Mail-Eingabe:** Ungültige Adressen werden gemeldet statt still verworfen; Duplikate werden dedupliziert.
+- Versions-Gleichschritt `2026082417`.
+
+## 0.9.39 — 2026-08-25 — Versions-Gleichschritt (enrol: Zugangsschlüssel-Fix)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082416`.
+
+## 0.9.38 — 2026-08-25 — Security-Härtung (Review-P0/P1) + CI-Rollback
+- **P0-1 Batch-Credential-Takeover behoben:** Neues Feld `converted` auf `tool_flexaccess_batch_member`. Bei Personalisierung/Konversion (`batch_import::convert`) wird das Mitglied als nicht mehr batch-verwaltet markiert; `batch::reset_credentials` überspringt solche Konten. Damit kann eine Credential-Neuausgabe niemals das Passwort eines inzwischen persistenten, personalisierten Nutzers rotieren. Zweite Verteidigungslinie in auth (siehe auth-CHANGELOG). Reproduzierender Test `batch_credential_lifecycle_test`.
+- **P0-2 Invitation-Token nicht mehr im Klartext at rest:** `invitation`-Mails werden jetzt sofort versendet (`auth_flexaccess\api::send_mail_now`); der Einmal-Token steht nur noch im ausgehenden Link und wird nirgends persistent gespeichert (die Queue enthält keine Token-Payloads mehr). Der irreführende Kommentar wurde korrigiert.
+- **P1 (Invitation):** `timesent`/`timereminded`/`remindercount` werden erst nach **erfolgreichem** Versand gesetzt (kein „gesendet", wenn der Mailversand fehlschlug).
+- **P0-3 Batch-Privacy vollständig:** `get_contexts_for_userid` erfasst jetzt `batch.usermodified` und Batch-Mitgliedschaften; `export_user_data` exportiert Batch-Modifikationen und Mitgliedschaften; `delete_data_for_all_users_in_context` entfernt zusätzlich Batch-Mitgliedschaften und anonymisiert Einladungs-E-Mails.
+- **P0-4 XLSX-Import gehärtet (CVE-2026-40902):** Dateigrößen-Limit (2 MiB), expliziter read-only `Xlsx`-Reader (kein Format-Sniffing), und **gebundene Zeilen-Iteration** (`getRowIterator(1, MAX+1)`, max. 2000 Datenzeilen) — neutralisiert die unbounded-row-dimension-DoS unabhängig von den deklarierten Dimensionen. Upload mit `maxbytes`.
+- **CI:** Rückrollung der Dev-Pipeline-Änderung — Geschwister werden wieder aus dem Default-Branch (`main`) gezogen.
+- Versions-Gleichschritt `2026082415`.
+
+## 0.9.38 — 2026-08-25 — CI-Rollback + P0-Security-Härtung
+
+- **CI:** Rücknahme der develop-Branch-Umstellung (Dev-Pipeline zieht Geschwister wieder aus `main`).
+- **P0-1 (Credential-Takeover behoben):** Neues `converted`-Flag an `tool_flexaccess_batch_member` (install.xml + Upgrade `2026082415`); bei Konversion gesetzt. `reset_credentials()` überspringt konvertierte/personalisierte Mitglieder, sodass ein Batch-Download niemals das Passwort eines inzwischen permanenten Nutzers rotiert. Zweite Verteidigungslinie in `auth::set_account_password()`.
+- **P0-2 (Bearer-Token nicht mehr at rest):** Invitation-Mails werden sofort versendet (Token nur im Speicher, nie in der Mailqueue). Irreführender Kommentar korrigiert. **P1:** `timesent`/`timereminded` werden erst nach erfolgreichem Versand gesetzt.
+- **P0-3 (Privacy vollständig):** `get_contexts_for_userid`, `export_user_data` und `delete_data_for_all_users_in_context` decken jetzt Batches und Batch-Mitgliedschaften ab (inkl. Löschen der Batch-Member und Invite-E-Mails).
+- **P0-4 (XLSX-DoS/CVE-2026-40902):** Import gehärtet — expliziter Xlsx-Reader, Dateigrößenlimit (2 MiB), harte Begrenzung der Zeilen-Iteration (`getRowIterator(1, 2001)`) unabhängig von deklarierten Dimensionen; `maxbytes` am Upload.
+- Versions-Gleichschritt `2026082415`.
+
+## 0.9.37 — 2026-08-25 — CI: Dev-Pipeline zieht Geschwister aus develop
+- Die **Dev-Pipeline** (`moodle-plugin-ci-dev.yml`) holt die Geschwister-Plugins jetzt per `add-plugin … --branch develop` aus dem **develop-Branch** statt aus `main`. Damit testet die beschleunigte Pipeline den echten Entwicklungsstand aller vier Plugins gemeinsam — kein Skew mehr durch hinterherhängendes `main`. Die **Main-Pipeline** zieht weiterhin aus `main` (Release-Stand).
+- Versions-Gleichschritt auf `2026082414`.
+
+## 0.9.36 — 2026-08-25 — Versions-Gleichschritt (CI-Fix im enrol-Behat)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082413`.
+
+## 0.9.35 — 2026-08-25 — Versions-Gleichschritt (CI-Fixes in auth/enrol)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082412`.
+
+## 0.9.34 — 2026-08-25 — Versions-Gleichschritt (E-Mail-Login-Methode + Login-UI)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082411`.
+
+## 0.9.33 — 2026-08-25 — Versions-Gleichschritt (enrol: Fix Teilnehmerlisten-Sichtbarkeit)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082410`.
+
+## 0.9.32 — 2026-08-25 — Versions-Gleichschritt
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082409`.
+
+## 0.9.31 — 2026-08-25 — Versions-Gleichschritt (enrol: präzisierte Neutralisierungs-Warnung)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082408`.
+
+## 0.9.30 — 2026-08-25 — Discoverability A/C/D1/D2/D4/D5/D6
+- **A:** Dashboard zusätzlich unter *Website-Administration → Nutzer/innen → Nutzerkonten* registriert.
+- **C:** `tool/flexaccess:managecoursebatches` jetzt nur noch **Kursmanager + Admin** (nicht mehr editingteacher). Neue Capability `tool/flexaccess:requestbatches` (editingteacher + manager) fürs Beantragen.
+- **D5:** Beantragen von Listen (Teilnehmerzahl) auf der Kurs-Seite; Lehrende ohne Provisionierungsrecht lösen eine Anfrage aus. Benachrichtigung als **E-Mail UND Moodle-Message** (Message-Provider `batchrequest`) an genau die Personen mit Provisionierungsrecht im Kurs-Kontext (`managers_for_course()`), mit Deep-Link zum Erstellen. Neue API `can_request`/`require_request`/`managers_for_course`/`notify_request`.
+- **D6:** In der Batch-Liste je Zeile „im Kurs öffnen" (Link zur Kurs-Seite).
+- Kurs-Navigationsknoten greift jetzt bei `can_request` (Lehrende sehen ihn zum Beantragen). Neues Formular `coursebatchrequest_form`. Tests erweitert (Manager-only manage, teacher request, Empfänger, Message-Versand via Sink).
+- Versions-Gleichschritt auf `2026082407`.
+
+## 0.9.29 — 2026-08-25 — P2: PHPUnit-11-Migration + Pakete ohne .git
+- `@covers`-Doc-Annotationen der Testklassen auf `#[CoversClass(...)]`-Attribute umgestellt (keine PHPUnit-Deprecations mehr). `.git`-Verzeichnisse aus dem Paket entfernt. Versions-Gleichschritt auf `2026082406`.
+
+## 0.9.28 — 2026-08-25 — P1 T2: kurs-interne Zugangslisten-Verwaltung
+- **T2:** Lehrende verwalten anonyme Zugangslisten jetzt **im Kurs** (`coursebatches.php`): Erstellen, Auflisten und Download (XLSX/PDF-Liste/Karten) für genau diesen Kurs, ohne in die Site-Administration zu wechseln.
+- Neue Kurskontext-Capability `tool/flexaccess:managecoursebatches` (editingteacher + manager). Neue API `batch::for_course()`, `count_for_course()`, `can_manage()`, `require_manage()` (Dual-Kontext: System-`managebatches` ODER Kurs-`managecoursebatches`).
+- `batchdownload.php` akzeptiert nun den Kurskontext (Lehrende dürfen ihre eigenen Listen herunterladen). Navigations-Hook `tool_flexaccess_extend_navigation_course()` verlinkt die Seite im Kurs. Neues Formular `coursebatch_form` (ohne Kurs-Selektor). Test `coursebatches_test`.
+- Versions-Gleichschritt auf `2026082405`.
+
+## 0.9.27 — 2026-08-24 — CI-Fix: fehlerhafte Workflow-Ausdrücke (${ } → ${{ }})
+- Fehlerhafte GitHub-Actions-Ausdrücke im `lint-jsamd`-Job korrigiert (`${ } → ${{ }}`); mit `actionlint` gegengeprüft (0 Findings). Kein PHP-Code geändert; Versions-Gleichschritt auf `2026082404`.
+
+## 0.9.26 — 2026-08-24 — CI: JS/AMD/Mustache-Job wiederhergestellt (catquiz-Form 1:1)
+- `lint-jsamd` (grunt + mustache) in dev wiederhergestellt; Mustache/npm/Grunt in main ergänzt. Kein PHP-Code geändert; Versions-Gleichschritt auf `2026082403`.
+
+## 0.9.25 — 2026-08-24 — CI-Fixes (DB-Versionen, vollständige Geschwister, eine Main-Pipeline)
+- CI: `postgres:13→16`, `mariadb:10.8→10.11`; jede Pipeline installiert alle drei Geschwister (Ökosystem-Tests); `moodle-release.yml` entfernt.
+- Kein PHP-Code geändert; Versions-Gleichschritt auf `2026082402`.
+
+## 0.9.24 — 2026-08-24 — Versions-Gleichschritt (enrol: L3-Kurs-Einstieg + Load-Pläne + CI-Konsolidierung)
+- Keine Codeänderung in diesem Plugin. CI: eine Main-Pipeline (Ökosystem-`main.yml` entfernt); Load-Workflows liegen im Hub `enrol_flexaccess`.
+- Versions-Gleichschritt auf `2026082401`.
+
+## 0.9.23 — 2026-08-24 — Versions-Gleichschritt (enrol: Zugangs-Blocker-Fix + Kopplungscheck)
+- Keine Codeänderung in diesem Plugin; gemeinsamer Versions-Bump auf `2026082400` und aktualisierte Abhängigkeits-Pins.
+- **CI-Fix:** `@package`-Korrektur in `tools/mustache_check.php` und `tools/fix_phpdoc.php` (Copy-Paste-Rest).
+- **CI-Pipeline:** getrennte Dev-/Main-Workflows + dispatch-only JMeter-/k6-Lastworkflows (catquiz-Vorbild, FlexAccess-Geschwister als Abhängigkeit).
+
 ## 0.9.22 — 2026-08-20 — Fix: PHPDoc-Checker (CI) — @param-Vollstaendigkeit
 - **Fix (CI PHPDoc):** Der Moodle-PHPDoc-Checker erkennt generische Array-Typen (`array<...>`, `array{...}`) in `@param` nicht und meldete daher "incomplete parameters list" fuer `batch_export::excel/pdf_list/login_cards`, `batch_import::convert/target_username`. Diese `@param`-Typen auf `array` vereinfacht (Form in der Beschreibung erhalten). Zusaetzlich `invitation::queue_mail`: fehlender `@param $token` ergaenzt (Signatur hat 5 Parameter, Docblock hatte 4). Verwaisten doppelten Docblock vor `invitation::reserve()` entfernt. Keine Logikaenderung.
 

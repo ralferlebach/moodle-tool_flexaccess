@@ -51,7 +51,7 @@ final class policy_presenter {
             'availablefrom' => (int) $policy->availablefrom,
             'availableuntil' => (int) $policy->availableuntil,
             'maxparticipants' => (int) $policy->maxparticipants,
-            'participantvisibility' => (string) $policy->participantvisibility,
+            'participantlistaccess' => (string) $policy->participantlistaccess,
             'accesskeyscope' => (string) $policy->temporaryaccesskeyscope,
         ];
     }

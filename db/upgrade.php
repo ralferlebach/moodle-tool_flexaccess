@@ -177,5 +177,89 @@ function xmldb_tool_flexaccess_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026081920, 'tool', 'flexaccess');
     }
 
+    if ($oldversion < 2026082415) {
+        $dbman = $DB->get_manager();
+        // P0-1: mark batch members that have left batch management (personalised/converted), so
+        // their password can never be rotated again by a batch credential re-issue.
+        $table = new xmldb_table('tool_flexaccess_batch_member');
+        $field = new xmldb_field('converted', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'username');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        upgrade_plugin_savepoint(true, 2026082415, 'tool', 'flexaccess');
+    }
+    if ($oldversion < 2026082420) {
+        $dbman = $DB->get_manager();
+        $table = new xmldb_table('tool_flexaccess_batch');
+        // Asynchronous provisioning state: how many accounts were requested and how far we got.
+        $requested = new xmldb_field('requestedcount', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'membercount');
+        if (!$dbman->field_exists($table, $requested)) {
+            $dbman->add_field($table, $requested);
+        }
+        $status = new xmldb_field('status', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'complete', 'requestedcount');
+        if (!$dbman->field_exists($table, $status)) {
+            $dbman->add_field($table, $status);
+        }
+        // Existing batches were provisioned synchronously and are therefore complete.
+        $DB->execute("UPDATE {tool_flexaccess_batch} SET requestedcount = membercount WHERE requestedcount = 0");
+        upgrade_plugin_savepoint(true, 2026082420, 'tool', 'flexaccess');
+    }
+    if ($oldversion < 2026082424) {
+        $dbman = $DB->get_manager();
+        // Persist why a batch failed, so an administrator can act on it instead of guessing.
+        $table = new xmldb_table('tool_flexaccess_batch');
+        $field = new xmldb_field('statusmessage', XMLDB_TYPE_CHAR, '255', null, null, null, null, 'status');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        upgrade_plugin_savepoint(true, 2026082424, 'tool', 'flexaccess');
+    }
+    if ($oldversion < 2026082425) {
+        $dbman = $DB->get_manager();
+        $table = new xmldb_table('tool_flexaccess_campaign');
+        // P1-9: the campaign token is a bearer secret and must not sit in the database in clear.
+        // No DEFAULT: XMLDB rejects '' as a default on a CHAR NOT NULL column (it emits a debugging
+        // message and silently rewrites it), so the column is added nullable-free without one.
+        $field = new xmldb_field('tokenhash', XMLDB_TYPE_CHAR, '64', null, XMLDB_NOTNULL, null, null, 'courseid');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        // Drop the old unique index before removing its column, then index the hash instead.
+        $oldindex = new xmldb_index('token_uix', XMLDB_INDEX_UNIQUE, ['token']);
+        if ($dbman->index_exists($table, $oldindex)) {
+            $dbman->drop_index($table, $oldindex);
+        }
+        // Migrate existing links so they keep working, then destroy the plaintext.
+        $old = new xmldb_field('token', XMLDB_TYPE_CHAR, '40', null, XMLDB_NOTNULL, null, null);
+        if ($dbman->field_exists($table, $old)) {
+            $rs = $DB->get_recordset_select('tool_flexaccess_campaign', "token <> ''", null, '', 'id, token');
+            foreach ($rs as $record) {
+                $DB->set_field(
+                    'tool_flexaccess_campaign',
+                    'tokenhash',
+                    hash('sha256', (string) $record->token),
+                    ['id' => $record->id]
+                );
+            }
+            $rs->close();
+            $dbman->drop_field($table, $old);
+        }
+        $newindex = new xmldb_index('tokenhash_uix', XMLDB_INDEX_UNIQUE, ['tokenhash']);
+        if (!$dbman->index_exists($table, $newindex)) {
+            $dbman->add_index($table, $newindex);
+        }
+        upgrade_plugin_savepoint(true, 2026082425, 'tool', 'flexaccess');
+    }
+    if ($oldversion < 2026082427) {
+        $dbman = $DB->get_manager();
+        // Per-member record of why a conversion attempt failed, so a partial import is diagnosable
+        // row by row instead of only as an aggregate count.
+        $table = new xmldb_table('tool_flexaccess_batch_member');
+        $field = new xmldb_field('converterror', XMLDB_TYPE_CHAR, '255', null, null, null, null, 'converted');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        upgrade_plugin_savepoint(true, 2026082427, 'tool', 'flexaccess');
+    }
     return true;
 }

@@ -50,7 +50,7 @@ if ($existing = ($categoryid > 0 ? \enrol_flexaccess\local\category_policy::load
         'allownormallogin' => (int) $existing->allownormallogin,
         'temporarylifetime' => (int) ($existing->temporarylifetime ?? 0),
         'provisionallifetime' => (int) ($existing->provisionallifetime ?? 0),
-        'participantvisibility' => $existing->participantvisibility,
+        'participantlistaccess' => $existing->participantlistaccess,
     ]);
 } else if ($categoryid > 0) {
     $form->set_data(['categoryid' => $categoryid]);
@@ -58,7 +58,13 @@ if ($existing = ($categoryid > 0 ? \enrol_flexaccess\local\category_policy::load
 
 if ($form->is_cancelled()) {
     redirect($returnurl);
-} else if (optional_param('delete', 0, PARAM_INT) === 1 && $categoryid > 0 && confirm_sesskey()) {
+} else if (
+    optional_param('delete', 0, PARAM_INT) === 1
+        && $categoryid > 0
+        // Deleting a category policy changes access for every course beneath it: POST only.
+        && $_SERVER['REQUEST_METHOD'] === 'POST'
+        && confirm_sesskey()
+) {
     \enrol_flexaccess\local\category_policy::delete($categoryid);
     redirect($returnurl, get_string('policydeleted', 'tool_flexaccess'), null, \core\output\notification::NOTIFY_SUCCESS);
 } else if ($data = $form->get_data()) {
@@ -69,7 +75,7 @@ if ($form->is_cancelled()) {
         'allownormallogin' => $data->allownormallogin,
         'temporarylifetime' => $data->temporarylifetime,
         'provisionallifetime' => $data->provisionallifetime,
-        'participantvisibility' => $data->participantvisibility,
+        'participantlistaccess' => $data->participantlistaccess,
     ]);
     redirect($returnurl, get_string('policysaved', 'tool_flexaccess'), null, \core\output\notification::NOTIFY_SUCCESS);
 }
@@ -101,16 +107,16 @@ if ($overrides) {
     foreach ($overrides as $catid => $row) {
         $name = $categories[$catid] ?? ('#' . $catid);
         $editurl = new moodle_url($returnurl, ['categoryid' => $catid]);
-        $deleteurl = new moodle_url($returnurl, ['categoryid' => $catid, 'delete' => 1, 'sesskey' => sesskey()]);
+        $deleteurl = new moodle_url($returnurl, ['categoryid' => $catid, 'delete' => 1]);
         $actions = html_writer::link($editurl, get_string('edit'))
             . ' · '
-            . html_writer::link($deleteurl, get_string('delete'));
+            . $OUTPUT->render(new single_button($deleteurl, get_string('delete'), 'post'));
         $table->data[] = [
             format_string($name),
             $flagword((int) $row->allowtemporary),
             $flagword((int) $row->allowquick),
             $flagword((int) $row->allowguest),
-            s(\tool_flexaccess\local\policy_presenter::visibility_label($row->participantvisibility)),
+            s(\tool_flexaccess\local\policy_presenter::visibility_label($row->participantlistaccess)),
             $actions,
         ];
     }

@@ -44,21 +44,21 @@ final class batch_convert_form extends \moodleform {
         $mform->addElement(
             'filepicker',
             'excelfile',
-            get_string('batch:uploadfile', 'tool_flexaccess'),
+            get_string('batchuploadfile', 'tool_flexaccess'),
             null,
-            ['accepted_types' => ['.xlsx']]
+            ['accepted_types' => ['.xlsx'], 'maxbytes' => \tool_flexaccess\local\batch_import::MAX_IMPORT_BYTES]
         );
         $mform->addRule('excelfile', get_string('required'), 'required', null, 'client');
 
         $mform->addElement(
             'select',
             'usernamerule',
-            get_string('batch:usernamerule', 'tool_flexaccess'),
+            get_string('batchusernamerule', 'tool_flexaccess'),
             batch_import::rules()
         );
         $mform->setDefault('usernamerule', batch_import::RULE_EMAIL);
-        $mform->addHelpButton('usernamerule', 'batch:usernamerule', 'tool_flexaccess');
+        $mform->addHelpButton('usernamerule', 'batchusernamerule', 'tool_flexaccess');
 
-        $this->add_action_buttons(true, get_string('batch:convert', 'tool_flexaccess'));
+        $this->add_action_buttons(true, get_string('batchconvert', 'tool_flexaccess'));
     }
 }

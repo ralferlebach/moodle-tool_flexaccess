@@ -21,8 +21,9 @@ namespace tool_flexaccess\local;
  *
  * An administrator creates N accounts (temporary/restricted or permanent/full) with random
  * usernames and passwords, enrolled into a target course through the FlexAccess enrol instance.
- * Plain passwords are never stored: they exist only in memory during creation and export, and can be
- * re-issued on demand via {@see reset_credentials()} (which resets every member's password).
+ * Plain passwords are never stored: they exist only in memory during creation and export. Passwords
+ * can be re-issued via {@see reset_credentials()}, which rotates the password of every member that
+ * is still batch-managed and skips any member that has been personalised/converted (P0-1).
  *
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -34,6 +35,30 @@ final class batch {
 
     /** Batch member table. */
     private const MEMBER_TABLE = 'tool_flexaccess_batch_member';
+
+    /** Hard upper bound on accounts requested in one batch. */
+    private const MAX_SYNC_CREATE = 1000;
+
+    /** Accounts provisioned before committing progress, keeping each unit of work small. */
+    public const PROVISION_CHUNK = 50;
+
+    /** Above this many accounts, provisioning is handed to an ad-hoc task instead of the request. */
+    public const SYNC_THRESHOLD = 50;
+
+    /** Provisioning states of a batch. */
+    public const STATUS_QUEUED = 'queued';
+
+    /** Provisioning is running (synchronously or in the ad-hoc task). */
+    public const STATUS_CREATING = 'creating';
+
+    /** All requested accounts exist. */
+    public const STATUS_COMPLETE = 'complete';
+
+    /** Provisioning failed and was rolled back. */
+    public const STATUS_FAILED = 'failed';
+
+    /** A conversion import is running for this batch. */
+    public const STATUS_CONVERTING = 'converting';
 
     /** Unambiguous alphabet for usernames/passwords (no 0/O/1/l/I). */
     private const ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
@@ -62,6 +87,259 @@ final class batch {
     public static function all(int $limitfrom = 0, int $limitnum = 0): array {
         global $DB;
         return $DB->get_records(self::TABLE, null, 'timecreated DESC', '*', $limitfrom, $limitnum);
+    }
+
+    /**
+     * Batches provisioned for a single course, newest first.
+     *
+     * @param int $courseid Course id.
+     * @param int $limitfrom Offset.
+     * @param int $limitnum Page size (0 = no limit).
+     * @return array Batch records.
+     */
+    public static function for_course(int $courseid, int $limitfrom = 0, int $limitnum = 0): array {
+        global $DB;
+        return $DB->get_records(self::TABLE, ['courseid' => $courseid], 'timecreated DESC', '*', $limitfrom, $limitnum);
+    }
+
+    /**
+     * Number of batches provisioned for a single course.
+     *
+     * @param int $courseid Course id.
+     * @return int
+     */
+    public static function count_for_course(int $courseid): int {
+        global $DB;
+        return $DB->count_records(self::TABLE, ['courseid' => $courseid]);
+    }
+
+    /**
+     * Whether the current user may manage batches for the given course.
+     *
+     * Two roles can: a site manager holding tool/flexaccess:managebatches at system level, and a
+     * course teacher holding tool/flexaccess:managecoursebatches in the course context.
+     *
+     * @param int $courseid Course id.
+     * @return bool
+     */
+    public static function can_manage(int $courseid): bool {
+        return has_capability('tool/flexaccess:managebatches', \context_system::instance())
+            || has_capability('tool/flexaccess:managecoursebatches', \context_course::instance($courseid));
+    }
+
+    /**
+     * Require that the current user may manage batches for the given course.
+     *
+     * @param int $courseid Course id.
+     * @return void
+     */
+    public static function require_manage(int $courseid): void {
+        if (!self::can_manage($courseid)) {
+            throw new \required_capability_exception(
+                \context_course::instance($courseid),
+                'tool/flexaccess:managecoursebatches',
+                'nopermissions',
+                ''
+            );
+        }
+    }
+
+    /**
+     * Whether the current user holds a granular batch capability for the course.
+     *
+     * Backward compatible: site managers (managebatches) and holders of the legacy coarse course
+     * capability (managecoursebatches) keep all granular rights; the granular capability grants only
+     * its specific action, for finer role setups.
+     *
+     * @param int $courseid Course id.
+     * @param string $cap Short capability name (e.g. 'issuebatchcredentials').
+     * @return bool
+     */
+    private static function has_batch_cap(int $courseid, string $cap): bool {
+        $coursecontext = \context_course::instance($courseid);
+        return has_capability('tool/flexaccess:managebatches', \context_system::instance())
+            || has_capability('tool/flexaccess:managecoursebatches', $coursecontext)
+            || has_capability('tool/flexaccess:' . $cap, $coursecontext);
+    }
+
+    /**
+     * Require a granular batch capability, throwing the standard exception otherwise.
+     *
+     * @param int $courseid Course id.
+     * @param string $cap Short capability name.
+     * @return void
+     */
+    private static function require_batch_cap(int $courseid, string $cap): void {
+        if (!self::has_batch_cap($courseid, $cap)) {
+            throw new \required_capability_exception(
+                \context_course::instance($courseid),
+                'tool/flexaccess:' . $cap,
+                'nopermissions',
+                ''
+            );
+        }
+    }
+
+    /**
+     * Whether the current user may view the course's batches.
+     *
+     * @param int $courseid Course id.
+     * @return bool
+     */
+    public static function can_view(int $courseid): bool {
+        return self::has_batch_cap($courseid, 'viewcoursebatches');
+    }
+
+    /**
+     * Require batch-view permission for the course.
+     *
+     * @param int $courseid Course id.
+     * @return void
+     */
+    public static function require_view(int $courseid): void {
+        self::require_batch_cap($courseid, 'viewcoursebatches');
+    }
+
+    /**
+     * Require batch-create permission for the course.
+     *
+     * @param int $courseid Course id.
+     * @return void
+     */
+    public static function require_create(int $courseid): void {
+        self::require_batch_cap($courseid, 'createcoursebatches');
+    }
+
+    /**
+     * Whether the current user may create batches for the course.
+     *
+     * @param int $courseid Course id.
+     * @return bool
+     */
+    public static function can_create(int $courseid): bool {
+        return self::has_batch_cap($courseid, 'createcoursebatches');
+    }
+
+    /**
+     * Require credential-issuing permission for the course (rotating batch passwords).
+     *
+     * @param int $courseid Course id.
+     * @return void
+     */
+    public static function require_issue(int $courseid): void {
+        self::require_batch_cap($courseid, 'issuebatchcredentials');
+    }
+
+    /**
+     * Require account-conversion permission for the course.
+     *
+     * @param int $courseid Course id.
+     * @return void
+     */
+    public static function require_convert(int $courseid): void {
+        self::require_batch_cap($courseid, 'convertbatchaccounts');
+    }
+
+    /**
+     * Whether the current user may request a batch for the given course.
+     *
+     * Anyone who can create a batch can also (trivially) request one; in addition, an editing
+     * teacher holding tool/flexaccess:requestbatches may request without being able to provision.
+     *
+     * @param int $courseid Course id.
+     * @return bool
+     */
+    public static function can_request(int $courseid): bool {
+        return self::can_manage($courseid)
+            || has_capability('tool/flexaccess:requestbatches', \context_course::instance($courseid));
+    }
+
+    /**
+     * Require that the current user may request a batch for the given course.
+     *
+     * @param int $courseid Course id.
+     * @return void
+     */
+    public static function require_request(int $courseid): void {
+        if (!self::can_request($courseid)) {
+            throw new \required_capability_exception(
+                \context_course::instance($courseid),
+                'tool/flexaccess:requestbatches',
+                'nopermissions',
+                ''
+            );
+        }
+    }
+
+    /**
+     * Users who may provision batches for the given course: course managers holding
+     * managecoursebatches, plus site-level holders of managebatches. Keyed and de-duplicated by id.
+     *
+     * @param int $courseid Course id.
+     * @return array<int, \stdClass> User records keyed by id.
+     */
+    public static function managers_for_course(int $courseid): array {
+        $recipients = get_users_by_capability(
+            \context_course::instance($courseid),
+            'tool/flexaccess:managecoursebatches'
+        );
+        $recipients += get_users_by_capability(
+            \context_system::instance(),
+            'tool/flexaccess:managebatches'
+        );
+        return $recipients;
+    }
+
+    /**
+     * Notify the course's batch provisioners that a list has been requested.
+     *
+     * Sends both an in-app message and an email (per each recipient's messaging preferences) with a
+     * deep link that pre-fills the creation form. Returns the number of recipients notified.
+     *
+     * @param int $courseid Course id.
+     * @param int $requesterid User id of the requester.
+     * @param int $count Requested number of accounts.
+     * @return int Recipients notified.
+     */
+    public static function notify_request(int $courseid, int $requesterid, int $count): int {
+        global $DB;
+        $course = $DB->get_record('course', ['id' => $courseid], 'id, fullname', MUST_EXIST);
+        $requester = \core_user::get_user($requesterid);
+        $coursename = format_string($course->fullname);
+        $createurl = new \moodle_url('/admin/tool/flexaccess/coursebatches.php', [
+            'courseid' => $courseid,
+            'action' => 'new',
+            'count' => $count,
+        ]);
+
+        $a = (object) [
+            'requester' => fullname($requester),
+            'course' => $coursename,
+            'count' => $count,
+        ];
+        $notified = 0;
+        foreach (self::managers_for_course($courseid) as $recipient) {
+            if ((int) $recipient->id === $requesterid) {
+                continue;
+            }
+            $message = new \core\message\message();
+            $message->component = 'tool_flexaccess';
+            $message->name = 'batchrequest';
+            $message->userfrom = $requester;
+            $message->userto = $recipient;
+            $message->subject = get_string('batchrequestsubject', 'tool_flexaccess', $coursename);
+            $message->fullmessage = get_string('batchrequestbody', 'tool_flexaccess', $a);
+            $message->fullmessageformat = FORMAT_PLAIN;
+            $message->fullmessagehtml = text_to_html(get_string('batchrequestbody', 'tool_flexaccess', $a));
+            $message->smallmessage = get_string('batchrequestsmall', 'tool_flexaccess', $a);
+            $message->notification = 1;
+            $message->contexturl = $createurl->out(false);
+            $message->contexturlname = get_string('batchcreate', 'tool_flexaccess');
+            if (message_send($message)) {
+                $notified++;
+            }
+        }
+        return $notified;
     }
 
     /**
@@ -105,6 +383,11 @@ final class batch {
     /**
      * Create a batch of accounts, enrol them and record membership.
      *
+     * Small batches are provisioned synchronously. Larger ones (above {@see SYNC_THRESHOLD}) are
+     * handed to an ad-hoc task so the web request never has to create hundreds of accounts: the
+     * batch is returned immediately in status 'queued' and filled in the background. Credentials are
+     * issued separately afterwards, so nothing is lost by not provisioning inline.
+     *
      * @param string $name Batch label.
      * @param int $courseid Target course id.
      * @param bool $permanent Whether to create permanent authenticated accounts.
@@ -113,7 +396,8 @@ final class batch {
      * @param int $passwordlength Password length.
      * @param int|null $timeexpires Expiry for temporary accounts (0/null = plugin default).
      * @param int|null $now Current time.
-     * @return array{batchid:int, credentials:array<string,string>} New batch id and username=>password map.
+     * @return array{batchid:int, credentials:array<string,string>, status:string} Batch id, the
+     *     username=>password map (empty when queued) and the resulting provisioning status.
      */
     public static function create(
         string $name,
@@ -127,51 +411,150 @@ final class batch {
     ): array {
         global $DB, $USER;
         $now = $now ?? time();
-        $count = max(1, min(1000, $count));
+        $count = max(1, min(self::MAX_SYNC_CREATE, $count));
         $prefix = self::sanitise_prefix($usernameprefix);
+        $async = $count > self::SYNC_THRESHOLD;
 
         $batchid = (int) $DB->insert_record(self::TABLE, (object) [
             'name' => $name !== '' ? $name : $prefix,
             'courseid' => $courseid,
             'permanent' => $permanent ? 1 : 0,
             'membercount' => 0,
+            'requestedcount' => $count,
+            'status' => $async ? self::STATUS_QUEUED : self::STATUS_CREATING,
             'timecreated' => $now,
             'usermodified' => (int) $USER->id,
         ]);
 
-        $credentials = [];
-        $created = 0;
-        for ($i = 0; $i < $count; $i++) {
-            $username = self::unique_username($prefix);
-            $password = self::generate_password($passwordlength);
-            $userid = \auth_flexaccess\api::create_batch_account(
-                $username,
-                $password,
-                '',
-                '',
-                $permanent,
-                $timeexpires,
-                $now
-            );
-            \enrol_flexaccess\local\enrol_service::admin_enrol($courseid, $userid, !$permanent, $now);
-            $DB->insert_record(self::MEMBER_TABLE, (object) [
+        if ($async) {
+            $task = new \tool_flexaccess\task\provision_batch();
+            $task->set_custom_data([
                 'batchid' => $batchid,
-                'userid' => $userid,
-                'username' => $username,
+                'count' => $count,
+                'permanent' => $permanent,
+                'prefix' => $prefix,
+                'passwordlength' => $passwordlength,
+                'timeexpires' => $timeexpires,
             ]);
-            $credentials[$username] = $password;
-            $created++;
+            \core\task\manager::queue_adhoc_task($task);
+            return ['batchid' => $batchid, 'credentials' => [], 'status' => self::STATUS_QUEUED];
         }
-        $DB->set_field(self::TABLE, 'membercount', $created, ['id' => $batchid]);
 
-        return ['batchid' => $batchid, 'credentials' => $credentials];
+        $credentials = self::provision_members($batchid, $count, $permanent, $prefix, $passwordlength, $timeexpires, $now);
+        return ['batchid' => $batchid, 'credentials' => $credentials, 'status' => self::STATUS_COMPLETE];
     }
 
     /**
-     * Reset every member's password to a fresh random value and return the new credentials.
+     * Provision the still-missing accounts of a batch and record them as members.
      *
-     * This is the secure way to re-issue login sheets: plain passwords are never persisted, so a
-     * re-download simply rolls new passwords (safe because batch accounts are freshly provisioned).
+     * Idempotent and resumable: only the difference between the requested count and the members
+     * that already exist is created, so a retried ad-hoc task resumes instead of producing
+     * duplicate accounts or enrolments. `membercount` is written after each chunk, so it reflects
+     * real committed progress rather than a guess.
+     *
+     * Deliberately NOT wrapped in one big transaction. A transaction spanning up to 1000 user
+     * creations would be held open far too long, and Moodle's rollback() re-throws - which would
+     * make the FAILED state unreachable and leave a failed batch stuck on CREATING forever.
+     * Instead each member is written only after its account and enrolment succeeded, so an
+     * interrupted run leaves a smaller but consistent batch that the retry simply completes.
+     *
+     * @param int $batchid Batch to fill.
+     * @param int $count Total number of accounts the batch should end up with.
+     * @param bool $permanent Whether to create permanent authenticated accounts.
+     * @param string $prefix Sanitised username prefix.
+     * @param int $passwordlength Password length.
+     * @param int|null $timeexpires Expiry for temporary accounts.
+     * @param int|null $now Current time.
+     * @return array<string,string> Username => plain password map (never persisted).
+     */
+    public static function provision_members(
+        int $batchid,
+        int $count,
+        bool $permanent,
+        string $prefix,
+        int $passwordlength = 10,
+        ?int $timeexpires = null,
+        ?int $now = null
+    ): array {
+        global $DB;
+        $now = $now ?? time();
+        $batch = self::get($batchid);
+        if (!$batch) {
+            throw new \moodle_exception('invalidrecord', 'error');
+        }
+        $courseid = (int) $batch->courseid;
+        $DB->set_field(self::TABLE, 'status', self::STATUS_CREATING, ['id' => $batchid]);
+        $DB->set_field(self::TABLE, 'statusmessage', null, ['id' => $batchid]);
+
+        $existing = $DB->count_records(self::MEMBER_TABLE, ['batchid' => $batchid]);
+        $missing = max(0, $count - $existing);
+        $credentials = [];
+
+        try {
+            while ($missing > 0) {
+                $chunk = min(self::PROVISION_CHUNK, $missing);
+                $made = 0;
+                for ($i = 0; $i < $chunk; $i++) {
+                    $username = self::unique_username($prefix);
+                    $password = self::generate_password($passwordlength);
+                    $userid = \auth_flexaccess\api::create_batch_account(
+                        $username,
+                        $password,
+                        '',
+                        '',
+                        $permanent,
+                        $timeexpires,
+                        $now
+                    );
+                    \enrol_flexaccess\local\enrol_service::admin_enrol($courseid, $userid, !$permanent, $now);
+                    $DB->insert_record(self::MEMBER_TABLE, (object) [
+                        'batchid' => $batchid,
+                        'userid' => $userid,
+                        'username' => $username,
+                    ]);
+                    $credentials[$username] = $password;
+                    $made++;
+                }
+                $existing += $made;
+                $DB->set_field(self::TABLE, 'membercount', $existing, ['id' => $batchid]);
+                $missing -= $made;
+            }
+        } catch (\Throwable $e) {
+            self::mark_failed($batchid, $e);
+            throw $e;
+        }
+
+        $DB->set_field(self::TABLE, 'membercount', $existing, ['id' => $batchid]);
+        $DB->set_field(self::TABLE, 'status', self::STATUS_COMPLETE, ['id' => $batchid]);
+        return $credentials;
+    }
+
+    /**
+     * Record that provisioning failed, together with the reason.
+     *
+     * Runs outside any transaction, so the state is guaranteed to persist: a failed batch must
+     * never stay on CREATING, which would look like work still in progress that never finishes.
+     *
+     * @param int $batchid Batch id.
+     * @param \Throwable $e The failure.
+     * @return void
+     */
+    private static function mark_failed(int $batchid, \Throwable $e): void {
+        global $DB;
+        $DB->set_field(self::TABLE, 'status', self::STATUS_FAILED, ['id' => $batchid]);
+        $DB->set_field(
+            self::TABLE,
+            'statusmessage',
+            \core_text::substr($e->getMessage(), 0, 255),
+            ['id' => $batchid]
+        );
+    }
+
+    /**
+     * Reset every still-managed member's password to a fresh value and return the new credentials.
+     *
+     * This is the secure way to issue login sheets: plain passwords are never persisted, so issuing
+     * always rolls new passwords. Members that have been personalised/converted are skipped (P0-1).
      *
      * @param int $batchid Batch id.
      * @param int $passwordlength Password length.
@@ -180,11 +563,109 @@ final class batch {
     public static function reset_credentials(int $batchid, int $passwordlength = 10): array {
         $credentials = [];
         foreach (self::members($batchid) as $member) {
+            // Never rotate the password of a member that has left batch management (personalised /
+            // converted to a permanent account): doing so would be a credential takeover (P0-1).
+            // The stored flag is the authority; set_account_password() enforces the same rule again.
+            if (!empty($member->converted)) {
+                continue;
+            }
             $password = self::generate_password($passwordlength);
-            \auth_flexaccess\api::set_account_password((int) $member->userid, $password);
-            $credentials[$member->username] = $password;
+            if (\auth_flexaccess\api::set_account_password((int) $member->userid, $password)) {
+                $credentials[$member->username] = $password;
+            }
         }
         return $credentials;
+    }
+
+    /**
+     * Mark a batch as having a conversion import in progress.
+     *
+     * @param int $batchid Batch id.
+     * @param int $total Number of rows to process.
+     * @return void
+     */
+    public static function mark_converting(int $batchid, int $total): void {
+        global $DB;
+        $DB->set_field(self::TABLE, 'status', self::STATUS_CONVERTING, ['id' => $batchid]);
+        $DB->set_field(
+            self::TABLE,
+            'statusmessage',
+            get_string('batchconvertprogress', 'tool_flexaccess', (object) ['done' => 0, 'total' => $total]),
+            ['id' => $batchid]
+        );
+    }
+
+    /**
+     * Write back how far a running conversion has got, so progress is visible while it runs.
+     *
+     * @param int $batchid Batch id.
+     * @param int $done Rows converted so far.
+     * @return void
+     */
+    public static function report_convert_progress(int $batchid, int $done): void {
+        global $DB;
+        $batch = self::get($batchid);
+        if (!$batch) {
+            return;
+        }
+        $total = (int) $batch->requestedcount ?: (int) $batch->membercount;
+        $DB->set_field(
+            self::TABLE,
+            'statusmessage',
+            get_string('batchconvertprogress', 'tool_flexaccess', (object) ['done' => $done, 'total' => $total]),
+            ['id' => $batchid]
+        );
+    }
+
+    /**
+     * Record the outcome of a finished conversion import.
+     *
+     * @param int $batchid Batch id.
+     * @param int $converted Rows converted.
+     * @param int $skipped Rows skipped or failed.
+     * @return void
+     */
+    public static function finish_converting(int $batchid, int $converted, int $skipped): void {
+        global $DB;
+        $DB->set_field(self::TABLE, 'status', self::STATUS_COMPLETE, ['id' => $batchid]);
+        $DB->set_field(
+            self::TABLE,
+            'statusmessage',
+            get_string(
+                'batchconvertdone',
+                'tool_flexaccess',
+                (object) ['converted' => $converted, 'skipped' => $skipped]
+            ),
+            ['id' => $batchid]
+        );
+    }
+
+    /**
+     * Human-readable provisioning status of a batch, including progress while it is being filled.
+     *
+     * @param \stdClass $batch Batch record.
+     * @return string Localised status label.
+     */
+    public static function status_label(\stdClass $batch): string {
+        $status = (string) ($batch->status ?? self::STATUS_COMPLETE);
+        $label = get_string('batchstatus' . $status, 'tool_flexaccess');
+        if ($status === self::STATUS_CONVERTING && !empty($batch->statusmessage)) {
+            // A running conversion reports its own row-level progress.
+            return $label . ' (' . s((string) $batch->statusmessage) . ')';
+        }
+        if ($status === self::STATUS_FAILED && !empty($batch->statusmessage)) {
+            // Show the administrator why it failed instead of a bare "failed".
+            $label .= ' (' . s((string) $batch->statusmessage) . ')';
+        }
+        // Progress is only shown while work is actually running: membercount is committed per
+        // chunk, so the number is real. A queued batch has not started and gets no fake counter.
+        if ($status === self::STATUS_CREATING) {
+            $label .= ' (' . get_string('batchprogress', 'tool_flexaccess', (object) [
+                'done' => (int) $batch->membercount,
+                'total' => (int) ($batch->requestedcount ?: $batch->membercount),
+            ]) . ')';
+        }
+        return $label;
     }
 
     /**

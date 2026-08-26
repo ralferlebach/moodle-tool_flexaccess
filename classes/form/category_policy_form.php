@@ -66,9 +66,9 @@ final class category_policy_form extends \moodleform {
             'optional' => true,
         ]);
 
-        $mform->addElement('select', 'participantvisibility', get_string('policyvisibility', 'tool_flexaccess'), $visibility);
-        $mform->setType('participantvisibility', PARAM_ALPHA);
-        $mform->setDefault('participantvisibility', 'inherit');
+        $mform->addElement('select', 'participantlistaccess', get_string('policyvisibility', 'tool_flexaccess'), $visibility);
+        $mform->setType('participantlistaccess', PARAM_ALPHA);
+        $mform->setDefault('participantlistaccess', 'inherit');
 
         $this->add_action_buttons(true, get_string('savechanges'));
     }

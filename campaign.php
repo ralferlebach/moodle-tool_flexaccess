@@ -94,20 +94,20 @@ if ($form->is_cancelled()) {
             $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);
             complete_user_login($user);
             $message = $result->status === 'verificationsent'
-                ? get_string('register:verificationsent', 'auth_flexaccess')
-                : get_string('register:success', 'auth_flexaccess');
+                ? get_string('registerverificationsent', 'auth_flexaccess')
+                : get_string('registersuccess', 'auth_flexaccess');
             redirect($courseurl, $message);
         }
         // Sign-up failed after reserving: give the slot back.
         campaign::release_reservation((int) $campaign->id);
-        $failure = 'access:' . $result->status;
+        $failure = 'access' . $result->status;
     }
 }
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(format_string($campaign->name));
 if ($failure !== null) {
-    if (str_starts_with($failure, 'access:')) {
+    if (str_starts_with($failure, 'access')) {
         echo $OUTPUT->notification(get_string($failure, 'auth_flexaccess'), 'error');
     } else {
         echo $OUTPUT->notification(get_string($failure, 'tool_flexaccess'), 'error');

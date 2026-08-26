@@ -47,6 +47,21 @@ final class batch_import {
     /** Username rule: firstname.lastname. */
     public const RULE_FIRSTLAST = 'firstlast';
 
+    /** Maximum accepted import file size (2 MiB) - guards the XLSX reader (P0-4). */
+    public const MAX_IMPORT_BYTES = 2097152;
+
+    /** Rows converted before progress is written back; keeps each unit of work small. */
+    public const CONVERT_CHUNK = 25;
+
+    /** Above this many rows, conversion is handed to an ad-hoc task instead of the web request. */
+    public const MAX_SYNC_CONVERT = 100;
+
+    /** Schema marker written to H1 by the exporter; the importer accepts only this format. */
+    public const SCHEMA_VERSION = 'FLEXACCESS-BATCH-V1';
+
+    /** Maximum data rows read from an import file, bounding the row iterator (P0-4). */
+    public const MAX_IMPORT_ROWS = 2000;
+
     /**
      * The selectable username rules, for a form select.
      *
@@ -54,10 +69,10 @@ final class batch_import {
      */
     public static function rules(): array {
         return [
-            self::RULE_EMAIL => get_string('batch:rule_email', 'tool_flexaccess'),
-            self::RULE_KEEP => get_string('batch:rule_keep', 'tool_flexaccess'),
-            self::RULE_EMAILLOCAL => get_string('batch:rule_emaillocal', 'tool_flexaccess'),
-            self::RULE_FIRSTLAST => get_string('batch:rule_firstlast', 'tool_flexaccess'),
+            self::RULE_EMAIL => get_string('batchrule_email', 'tool_flexaccess'),
+            self::RULE_KEEP => get_string('batchrule_keep', 'tool_flexaccess'),
+            self::RULE_EMAILLOCAL => get_string('batchrule_emaillocal', 'tool_flexaccess'),
+            self::RULE_FIRSTLAST => get_string('batchrule_firstlast', 'tool_flexaccess'),
         ];
     }
 
@@ -67,18 +82,52 @@ final class batch_import {
      * Columns follow the export layout: A username (match key), C first name, D last name, E email,
      * G optional new username. The header row is skipped.
      *
+     * Hardened against the PhpSpreadsheet unbounded-row-dimension CPU DoS (CVE-2026-40902): the file
+     * size is capped, an explicit read-only Xlsx reader is used (no format sniffing), and the row
+     * iteration is bounded to a fixed window regardless of the sheet's declared dimensions (P0-4).
+     *
      * @param string $filepath Absolute path to the uploaded .xlsx file.
      * @return array<int,array{username:string,firstname:string,lastname:string,email:string,newusername:string}>
      */
     public static function parse(string $filepath): array {
-        $reader = IOFactory::createReaderForFile($filepath);
+        if (!is_readable($filepath)) {
+            throw new \moodle_exception('batchimportunreadable', 'tool_flexaccess');
+        }
+        if (filesize($filepath) > self::MAX_IMPORT_BYTES) {
+            throw new \moodle_exception(
+                'batchimporttoolarge',
+                'tool_flexaccess',
+                '',
+                (object) ['limit' => display_size(self::MAX_IMPORT_BYTES)]
+            );
+        }
+        $reader = IOFactory::createReader('Xlsx');
         $reader->setReadDataOnly(true);
-        $spreadsheet = $reader->load($filepath);
+        try {
+            $spreadsheet = $reader->load($filepath);
+        } catch (\Throwable $e) {
+            // A corrupt or non-XLSX payload must fail with a clear message, not a raw library error.
+            throw new \moodle_exception('batchimportunreadable', 'tool_flexaccess');
+        }
         $sheet = $spreadsheet->getActiveSheet();
+
+        // Strict schema check: the export writes a machine-readable marker, so an arbitrary or
+        // hand-built spreadsheet is rejected rather than silently misinterpreted column by column.
+        $marker = trim((string) $sheet->getCell('H1')->getValue());
+        if ($marker !== self::SCHEMA_VERSION) {
+            throw new \moodle_exception(
+                'batchimportbadschema',
+                'tool_flexaccess',
+                '',
+                (object) ['expected' => self::SCHEMA_VERSION]
+            );
+        }
 
         $rows = [];
         $first = true;
-        foreach ($sheet->getRowIterator() as $row) {
+        // One row beyond the limit is read on purpose: if it carries data the file is too big, and
+        // the import is refused instead of silently dropping records.
+        foreach ($sheet->getRowIterator(1, self::MAX_IMPORT_ROWS + 2) as $row) {
             if ($first) {
                 $first = false;
                 continue;
@@ -93,6 +142,14 @@ final class batch_import {
             if ($username === '') {
                 continue;
             }
+            if (count($rows) >= self::MAX_IMPORT_ROWS) {
+                throw new \moodle_exception(
+                    'batchimporttoomanyrows',
+                    'tool_flexaccess',
+                    '',
+                    (object) ['max' => self::MAX_IMPORT_ROWS]
+                );
+            }
             $rows[] = [
                 'username' => $username,
                 'firstname' => $cells['C'] ?? '',
@@ -102,6 +159,58 @@ final class batch_import {
             ];
         }
         return $rows;
+    }
+
+    /**
+     * Record on the member itself why its conversion attempt failed.
+     *
+     * Aggregate counts do not tell an administrator which of 2000 rows went wrong; the reason is
+     * therefore attached to the member and survives the request.
+     *
+     * @param \stdClass $member Batch member record.
+     * @param string $message Human-readable reason.
+     * @return void
+     */
+    private static function record_member_error(\stdClass $member, string $message): void {
+        global $DB;
+        $DB->set_field(
+            self::MEMBER_TABLE,
+            'converterror',
+            \core_text::substr($message, 0, 255),
+            ['id' => $member->id]
+        );
+    }
+
+    /**
+     * Convert an import, synchronously for small files and via an ad-hoc task for large ones.
+     *
+     * Per row the conversion performs several database, identity and mail operations, so a large
+     * import must not sit in a web request. Callers get an immediate answer either way.
+     *
+     * @param int $batchid Batch id.
+     * @param array $rows Parsed import rows.
+     * @param string $usernamerule Username rule to apply.
+     * @param int|null $now Current time.
+     * @return array{queued:bool, converted:int, skipped:int, errors:array<string>}
+     */
+    public static function convert_dispatch(
+        int $batchid,
+        array $rows,
+        string $usernamerule = self::RULE_EMAIL,
+        ?int $now = null
+    ): array {
+        if (count($rows) <= self::MAX_SYNC_CONVERT) {
+            return ['queued' => false] + self::convert($batchid, $rows, $usernamerule, $now);
+        }
+        batch::mark_converting($batchid, count($rows));
+        $task = new \tool_flexaccess\task\convert_batch();
+        $task->set_custom_data([
+            'batchid' => $batchid,
+            'rows' => $rows,
+            'usernamerule' => $usernamerule,
+        ]);
+        \core\task\manager::queue_adhoc_task($task);
+        return ['queued' => true, 'converted' => 0, 'skipped' => 0, 'errors' => []];
     }
 
     /**
@@ -125,18 +234,38 @@ final class batch_import {
         $skipped = 0;
         $errors = [];
 
+        // Load the batch's members once and index them by username, instead of a query per row.
+        $members = [];
+        foreach ($DB->get_records(self::MEMBER_TABLE, ['batchid' => $batchid]) as $record) {
+            $members[$record->username] = $record;
+        }
+        batch::mark_converting($batchid, count($rows));
+        $processed = 0;
+
         foreach ($rows as $row) {
+            $processed++;
+            if ($processed % self::CONVERT_CHUNK === 0) {
+                batch::report_convert_progress($batchid, $converted);
+            }
             $username = $row['username'];
-            $member = $DB->get_record(self::MEMBER_TABLE, ['batchid' => $batchid, 'username' => $username]);
+            $member = $members[$username] ?? null;
+            if ($member && !empty($member->converted)) {
+                // Already converted (e.g. this import is being retried): skip silently so no second
+                // identity transition happens and no duplicate set-password mail goes out.
+                $skipped++;
+                continue;
+            }
             if (!$member) {
                 $skipped++;
-                $errors[] = get_string('batch:err_notfound', 'tool_flexaccess', $username);
+                $errors[] = get_string('batcherr_notfound', 'tool_flexaccess', $username);
                 continue;
             }
             $email = trim($row['email']);
             if ($email === '') {
                 $skipped++;
-                $errors[] = get_string('batch:err_noemail', 'tool_flexaccess', $username);
+                $message = get_string('batcherr_noemail', 'tool_flexaccess', $username);
+                $errors[] = $message;
+                self::record_member_error($member, $message);
                 continue;
             }
             $userid = (int) $member->userid;
@@ -146,11 +275,13 @@ final class batch_import {
             $status = \auth_flexaccess\api::admin_convert($userid, $email, $row['firstname'], $row['lastname'], $now);
             if ($status !== 'converted') {
                 $skipped++;
-                $errors[] = get_string(
-                    'batch:err_convert',
+                $message = get_string(
+                    'batcherr_convert',
                     'tool_flexaccess',
                     (object) ['username' => $username, 'status' => $status]
                 );
+                $errors[] = $message;
+                self::record_member_error($member, $message);
                 continue;
             }
 
@@ -160,19 +291,26 @@ final class batch_import {
                     $DB->set_field(self::MEMBER_TABLE, 'username', $target, ['id' => $member->id]);
                 } else {
                     // Conversion succeeded; only the rename failed (username taken/invalid).
-                    $errors[] = get_string(
-                        'batch:err_rename',
+                    $message = get_string(
+                        'batcherr_rename',
                         'tool_flexaccess',
                         (object) ['username' => $username, 'target' => $target]
                     );
+                    $errors[] = $message;
+                    self::record_member_error($member, $message);
                     $DB->set_field(self::MEMBER_TABLE, 'username', $email, ['id' => $member->id]);
                 }
             } else {
                 $DB->set_field(self::MEMBER_TABLE, 'username', $email, ['id' => $member->id]);
             }
+            // Mark the member as no longer batch-managed: a later credential re-issue must never
+            // touch this now-personalised, permanent account (P0-1).
+            $DB->set_field(self::MEMBER_TABLE, 'converted', 1, ['id' => $member->id]);
+            $DB->set_field(self::MEMBER_TABLE, 'converterror', null, ['id' => $member->id]);
             $converted++;
         }
 
+        batch::finish_converting($batchid, $converted, $skipped);
         return ['converted' => $converted, 'skipped' => $skipped, 'errors' => $errors];
     }
 

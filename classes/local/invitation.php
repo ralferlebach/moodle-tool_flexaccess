@@ -157,7 +157,7 @@ final class invitation {
      * @param int $id Invitation id.
      * @return string Plaintext token (to render into the outgoing mail).
      */
-    private static function issue_token(int $id): string {
+    public static function issue_token(int $id): string {
         global $DB;
         do {
             $token = self::generate_token();
@@ -196,9 +196,9 @@ final class invitation {
         if (!$invite || $invite->status !== self::STATUS_PENDING) {
             return false;
         }
-        self::queue_mail($invite, self::issue_token($id), 'invite:emailsubject', 'invite:emailbody', $now);
-        $DB->set_field(self::TABLE, 'timesent', $now, ['id' => $id]);
-        return true;
+        // Queued secret-free through the central FlexAccess mail queue: the token is minted by
+        // invitation_mail_renderer at delivery, and timesent is stamped only on real delivery.
+        return self::queue_mail($invite, invitation_mail_renderer::KIND_INVITE, $now);
     }
 
     /**
@@ -218,24 +218,28 @@ final class invitation {
         if ((int) $invite->timeexpires > 0 && $now > (int) $invite->timeexpires) {
             return false;
         }
-        self::queue_mail($invite, self::issue_token($id), 'invite:remindersubject', 'invite:reminderbody', $now);
-        $DB->set_field(self::TABLE, 'timereminded', $now, ['id' => $id]);
-        $DB->set_field(self::TABLE, 'remindercount', (int) $invite->remindercount + 1, ['id' => $id]);
-        return true;
+        // Reminder counters are stamped by the worker once the mail has actually gone out.
+        return self::queue_mail($invite, invitation_mail_renderer::KIND_REMINDER, $now);
     }
 
     /**
      * Revoke an invitation so its token can no longer be accepted.
      *
+     * Only a PENDING invitation can be revoked. A RESERVED one is mid-acceptance and an ACCEPTED /
+     * already-REVOKED one has nothing to revoke, so the caller is told (false) rather than shown a
+     * misleading success.
+     *
      * @param int $id Invitation id.
-     * @return void
+     * @return bool Whether the invitation was revoked.
      */
-    public static function revoke(int $id): void {
+    public static function revoke(int $id): bool {
         global $DB;
         $invite = self::get($id);
         if ($invite && $invite->status === self::STATUS_PENDING) {
             $DB->set_field(self::TABLE, 'status', self::STATUS_REVOKED, ['id' => $id]);
+            return true;
         }
+        return false;
     }
 
     /**
@@ -353,36 +357,33 @@ final class invitation {
     }
 
     /**
-     * Queue an invitation mail (rendered with the acceptance link) through the FlexAccess queue.
+     * Queue an invitation mail through the central FlexAccess mail queue, secret-free.
      *
-     * Uses the auth_flexaccess public mail API rather than writing to its table directly, so the
-     * cross-plugin coupling stays behind the sanctioned boundary and honours the queue's rate limit.
+     * The queue row names only the renderer and the invitation id - never the token. That keeps the
+     * bearer secret out of persistent storage while still routing the mail through the shared
+     * hourly send limit, retry/backoff and queue monitoring.
      *
      * @param \stdClass $invite Invitation record.
-     * @param string $token The single-use token rendered into the acceptance link.
-     * @param string $subjectkey Lang key for the subject.
-     * @param string $bodykey Lang key for the body (receives the link).
+     * @param string $kind invitation_mail_renderer::KIND_INVITE or KIND_REMINDER.
      * @param int $now Current time.
-     * @return void
+     * @return bool Whether the mail was queued.
      */
-    private static function queue_mail(
-        \stdClass $invite,
-        string $token,
-        string $subjectkey,
-        string $bodykey,
-        int $now
-    ): void {
-        if (!class_exists('\auth_flexaccess\api')) {
-            // The auth plugin (a declared dependency) is not available; nothing can be queued.
-            return;
+    private static function queue_mail(\stdClass $invite, string $kind, int $now): bool {
+        if (!method_exists('\auth_flexaccess\api', 'queue_deferred_mail')) {
+            // The auth plugin (a declared dependency, pinned by version) is missing or older than
+            // the secret-free deferred queue. Falling back to a plain queued mail is not an option:
+            // that would persist the token. Nothing is sent and the caller is told.
+            return false;
         }
-        // The plaintext token exists only here, rendered into the outgoing single-use link; at rest
-        // the invitation keeps only its hash. The queued mail row is pruned after delivery.
-        $link = (new \moodle_url('/admin/tool/flexaccess/invite.php', ['token' => $token]))->out(false);
-        $subject = get_string($subjectkey, 'tool_flexaccess');
-        $body = get_string($bodykey, 'tool_flexaccess', $link);
-        $bodyhtml = \html_writer::tag('p', get_string($bodykey, 'tool_flexaccess', \html_writer::link($link, $link)));
-        \auth_flexaccess\api::queue_mail(null, $invite->email, $subject, $body, $bodyhtml, 'invite', $now);
+        return (bool) \auth_flexaccess\api::queue_deferred_mail(
+            null,
+            $invite->email,
+            'invite',
+            invitation_mail_renderer::class,
+            ['invitationid' => (int) $invite->id, 'kind' => $kind],
+            $now,
+            $now
+        );
     }
 
     /**

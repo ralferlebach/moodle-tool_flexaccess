@@ -40,7 +40,7 @@ final class invitation_form extends \moodleform {
         $mform->addElement(
             'course',
             'courseid',
-            get_string('invite:course', 'tool_flexaccess'),
+            get_string('invitecourse', 'tool_flexaccess'),
             ['multiple' => false]
         );
         $mform->addRule('courseid', get_string('required'), 'required', null, 'client');
@@ -48,25 +48,25 @@ final class invitation_form extends \moodleform {
         $mform->addElement(
             'textarea',
             'emails',
-            get_string('invite:emails', 'tool_flexaccess'),
+            get_string('inviteemails', 'tool_flexaccess'),
             ['rows' => 6, 'cols' => 50]
         );
         $mform->setType('emails', PARAM_RAW);
         $mform->addRule('emails', get_string('required'), 'required', null, 'client');
-        $mform->addHelpButton('emails', 'invite:emails', 'tool_flexaccess');
+        $mform->addHelpButton('emails', 'inviteemails', 'tool_flexaccess');
 
         $mform->addElement(
             'duration',
             'expiry',
-            get_string('invite:expiry', 'tool_flexaccess'),
+            get_string('inviteexpiry', 'tool_flexaccess'),
             ['optional' => true]
         );
-        $mform->addHelpButton('expiry', 'invite:expiry', 'tool_flexaccess');
+        $mform->addHelpButton('expiry', 'inviteexpiry', 'tool_flexaccess');
 
-        $mform->addElement('advcheckbox', 'sendnow', get_string('invite:sendnow', 'tool_flexaccess'));
+        $mform->addElement('advcheckbox', 'sendnow', get_string('invitesendnow', 'tool_flexaccess'));
         $mform->setDefault('sendnow', 1);
 
-        $this->add_action_buttons(true, get_string('invite:create', 'tool_flexaccess'));
+        $this->add_action_buttons(true, get_string('invitecreate', 'tool_flexaccess'));
     }
 
     /**
@@ -78,14 +78,26 @@ final class invitation_form extends \moodleform {
      */
     public function validation($data, $files): array {
         $errors = parent::validation($data, $files);
+        $seen = [];
         $valid = 0;
-        foreach (preg_split('/[\s,;]+/', (string) ($data['emails'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) as $email) {
-            if (validate_email(trim($email))) {
+        $invalid = [];
+        foreach (preg_split('/[\s,;]+/', (string) ($data['emails'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) as $raw) {
+            $email = \core_text::strtolower(trim($raw));
+            if (!validate_email($email)) {
+                $invalid[$email] = true;
+                continue;
+            }
+            // Duplicates are de-duplicated silently at creation; only invalid addresses are blocking.
+            if (!isset($seen[$email])) {
+                $seen[$email] = true;
                 $valid++;
             }
         }
         if ($valid === 0) {
-            $errors['emails'] = get_string('invite:noemails', 'tool_flexaccess');
+            $errors['emails'] = get_string('invitenoemails', 'tool_flexaccess');
+        } else if ($invalid !== []) {
+            // Do not silently drop invalid addresses when some are valid: report them for correction.
+            $errors['emails'] = get_string('inviteinvalidemails', 'tool_flexaccess', implode(', ', array_keys($invalid)));
         }
         return $errors;
     }

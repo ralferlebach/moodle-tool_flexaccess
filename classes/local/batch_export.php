@@ -42,14 +42,21 @@ final class batch_export {
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('FlexAccess');
         $headers = [
-            get_string('batch:col_username', 'tool_flexaccess'),
-            get_string('batch:col_password', 'tool_flexaccess'),
-            get_string('batch:col_firstname', 'tool_flexaccess'),
-            get_string('batch:col_lastname', 'tool_flexaccess'),
-            get_string('batch:col_email', 'tool_flexaccess'),
-            get_string('batch:col_profilefields', 'tool_flexaccess'),
-            get_string('batch:col_newusername', 'tool_flexaccess'),
+            get_string('batchcol_username', 'tool_flexaccess'),
+            get_string('batchcol_password', 'tool_flexaccess'),
+            get_string('batchcol_firstname', 'tool_flexaccess'),
+            get_string('batchcol_lastname', 'tool_flexaccess'),
+            get_string('batchcol_email', 'tool_flexaccess'),
+            get_string('batchcol_profilefields', 'tool_flexaccess'),
+            get_string('batchcol_newusername', 'tool_flexaccess'),
         ];
+        // Machine-readable schema marker: the header labels are localised, so the importer must not
+        // have to guess the language. Written outside the data columns (A-G).
+        $sheet->setCellValueExplicit(
+            'H1',
+            batch_import::SCHEMA_VERSION,
+            \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+        );
         $col = 1;
         foreach ($headers as $h) {
             $sheet->setCellValueExplicit(
@@ -107,10 +114,10 @@ final class batch_export {
         $pdf->Ln(2);
 
         $headers = [
-            get_string('batch:col_username', 'tool_flexaccess'),
-            get_string('batch:col_password', 'tool_flexaccess'),
-            get_string('batch:col_lastname', 'tool_flexaccess'),
-            get_string('batch:col_firstname', 'tool_flexaccess'),
+            get_string('batchcol_username', 'tool_flexaccess'),
+            get_string('batchcol_password', 'tool_flexaccess'),
+            get_string('batchcol_lastname', 'tool_flexaccess'),
+            get_string('batchcol_firstname', 'tool_flexaccess'),
         ];
         $widths = [55, 45, 45, 45];
         $pdf->SetFont('helvetica', 'B', 10);
@@ -184,13 +191,13 @@ final class batch_export {
 
             $pdf->SetFont('helvetica', '', 9);
             $pdf->SetXY($textx, $texty + 8);
-            $pdf->Cell(20, 5, get_string('batch:col_username', 'tool_flexaccess') . ':', 0, 0, 'L');
+            $pdf->Cell(20, 5, get_string('batchcol_username', 'tool_flexaccess') . ':', 0, 0, 'L');
             $pdf->SetFont('courier', 'B', 10);
             $pdf->Cell($cardw - 2 * $pad - 20, 5, (string) $username, 0, 2, 'L');
 
             $pdf->SetFont('helvetica', '', 9);
             $pdf->SetXY($textx, $texty + 14);
-            $pdf->Cell(20, 5, get_string('batch:col_password', 'tool_flexaccess') . ':', 0, 0, 'L');
+            $pdf->Cell(20, 5, get_string('batchcol_password', 'tool_flexaccess') . ':', 0, 0, 'L');
             $pdf->SetFont('courier', 'B', 10);
             $pdf->Cell($cardw - 2 * $pad - 20, 5, (string) $password, 0, 2, 'L');
 

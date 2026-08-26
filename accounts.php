@@ -54,25 +54,21 @@ $PAGE->set_pagelayout('admin');
 $PAGE->set_title(get_string('accounts', 'tool_flexaccess'));
 $PAGE->set_heading(get_string('pluginname', 'tool_flexaccess'));
 
-if ($convert > 0) {
-    require_sesskey();
-    require_capability('tool/flexaccess:convertaccounts', $context);
-    $done = \auth_flexaccess\api::admin_convert($convert);
-    $message = $done ? get_string('accountconverted', 'tool_flexaccess')
-        : get_string('accountnotconverted', 'tool_flexaccess');
-    redirect($baseurl, $message, null,
-        $done ? \core\output\notification::NOTIFY_SUCCESS : \core\output\notification::NOTIFY_INFO);
-}
-
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('accounts', 'tool_flexaccess'));
 
 // Search box (matches e-mail, name and reference number).
 echo html_writer::start_tag('form', ['method' => 'get', 'action' => $baseurl->out_omit_querystring(), 'class' => 'mb-3']);
-echo html_writer::empty_tag('input', ['type' => 'text', 'name' => 'q', 'value' => $query,
-    'placeholder' => get_string('accountsearch', 'tool_flexaccess'), 'class' => 'form-control d-inline-block w-auto']);
-echo ' ' . html_writer::empty_tag('input', ['type' => 'submit', 'value' => get_string('search'),
-    'class' => 'btn btn-secondary']);
+$searchattrs = [
+    'type' => 'text',
+    'name' => 'q',
+    'value' => $query,
+    'placeholder' => get_string('accountsearch', 'tool_flexaccess'),
+    'class' => 'form-control d-inline-block w-auto',
+];
+echo html_writer::empty_tag('input', $searchattrs);
+$submitattrs = ['type' => 'submit', 'value' => get_string('search'), 'class' => 'btn btn-secondary'];
+echo ' ' . html_writer::empty_tag('input', $submitattrs);
 echo html_writer::end_tag('form');
 
 $total = \auth_flexaccess\api::count_accounts($query, $typefilter, $statefilter, $referencefilter);

@@ -63,6 +63,61 @@ $capabilities = [
         'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,
         'archetypes' => ['manager' => CAP_ALLOW],
     ],
+    // Manage anonymous access-list batches for a single course (course context). Restricted to
+    // course managers and admins - editing teachers can only request lists (see requestbatches).
+    'tool/flexaccess:managecoursebatches' => [
+        'riskbitmask' => RISK_PERSONAL | RISK_SPAM,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+
+    // Granular course-level batch rights. The legacy managecoursebatches (and system managebatches)
+    // still grant all of them, so existing role assignments keep working; these allow finer setups.
+    'tool/flexaccess:viewcoursebatches' => [
+        'riskbitmask' => RISK_PERSONAL,
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => ['editingteacher' => CAP_ALLOW, 'manager' => CAP_ALLOW],
+    ],
+
+    'tool/flexaccess:createcoursebatches' => [
+        'riskbitmask' => RISK_PERSONAL | RISK_SPAM,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => ['manager' => CAP_ALLOW],
+    ],
+
+    // Issuing (rotating) batch credentials is a distinct, higher-risk right than managing batches:
+    // it changes account passwords. Kept separate so it can be withheld independently.
+    'tool/flexaccess:issuebatchcredentials' => [
+        'riskbitmask' => RISK_PERSONAL | RISK_SPAM,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => ['manager' => CAP_ALLOW],
+    ],
+
+    'tool/flexaccess:convertbatchaccounts' => [
+        'riskbitmask' => RISK_PERSONAL | RISK_SPAM,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => ['manager' => CAP_ALLOW],
+    ],
+
+    // Request a batch of anonymous access accounts for a course; the request notifies the users who
+    // may provision them. Available to editing teachers (and managers, who can also create directly).
+    'tool/flexaccess:requestbatches' => [
+        'riskbitmask' => RISK_SPAM,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+
     'tool/flexaccess:managebatches' => [
         'riskbitmask' => RISK_CONFIG | RISK_PERSONAL | RISK_SPAM,
         'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,

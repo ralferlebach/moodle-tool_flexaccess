@@ -41,9 +41,58 @@ $PAGE->set_heading(get_string('pluginname', 'tool_flexaccess'));
 
 $returnurl = new moodle_url('/admin/tool/flexaccess/campaigns.php');
 
-if ($action === 'delete' && $id > 0 && confirm_sesskey()) {
+// State-changing actions must be POSTed: a GET can be triggered by a prefetch or a shared link.
+$ispost = ($_SERVER['REQUEST_METHOD'] === 'POST');
+
+if ($action === 'delete' && $id > 0 && $ispost && confirm_sesskey()) {
     campaign::delete($id);
     redirect($returnurl, get_string('campaigndeleted', 'tool_flexaccess'), null, \core\output\notification::NOTIFY_SUCCESS);
+}
+
+if ($action === 'confirmdelete' && $id > 0) {
+    $campaign = campaign::get($id);
+    if (!$campaign) {
+        redirect($returnurl);
+    }
+    echo $OUTPUT->header();
+    echo $OUTPUT->confirm(
+        get_string('campaigndeleteconfirm', 'tool_flexaccess', format_string($campaign->name)),
+        new single_button(new moodle_url($returnurl, ['action' => 'delete', 'id' => $id]), get_string('delete'), 'post'),
+        $returnurl
+    );
+    echo $OUTPUT->footer();
+    die;
+}
+
+// Rotating a campaign link is the only way to recover from a lost link: the token is stored hashed,
+// so it cannot be read back. Rotation invalidates the previous link immediately.
+if ($action === 'rotate' && $id > 0 && $ispost && confirm_sesskey()) {
+    $token = campaign::rotate_token($id);
+    if ($token === null) {
+        redirect($returnurl);
+    }
+    $link = (new moodle_url('/admin/tool/flexaccess/campaign.php', ['token' => $token]))->out(false);
+    redirect(
+        new moodle_url($returnurl, ['shown' => $id]),
+        get_string('campaignlinkonce', 'tool_flexaccess', $link),
+        null,
+        \core\output\notification::NOTIFY_WARNING
+    );
+}
+
+if ($action === 'confirmrotate' && $id > 0) {
+    $campaign = campaign::get($id);
+    if (!$campaign) {
+        redirect($returnurl);
+    }
+    echo $OUTPUT->header();
+    echo $OUTPUT->confirm(
+        get_string('campaignrotateconfirm', 'tool_flexaccess', format_string($campaign->name)),
+        new single_button(new moodle_url($returnurl, ['action' => 'rotate', 'id' => $id]), get_string('continue'), 'post'),
+        $returnurl
+    );
+    echo $OUTPUT->footer();
+    die;
 }
 
 $editing = ($action === 'edit' || $action === 'new');
@@ -81,10 +130,17 @@ if ($form->is_cancelled()) {
     ];
     if (!empty($data->id)) {
         campaign::update((int) $data->id, $values);
-    } else {
-        campaign::create($values);
+        redirect($returnurl, get_string('campaignsaved', 'tool_flexaccess'), null, \core\output\notification::NOTIFY_SUCCESS);
     }
-    redirect($returnurl, get_string('campaignsaved', 'tool_flexaccess'), null, \core\output\notification::NOTIFY_SUCCESS);
+    // The plaintext link exists only here: it is stored hashed and can never be displayed again.
+    $created = campaign::create($values);
+    $link = (new moodle_url('/admin/tool/flexaccess/campaign.php', ['token' => $created['token']]))->out(false);
+    redirect(
+        $returnurl,
+        get_string('campaignlinkonce', 'tool_flexaccess', $link),
+        null,
+        \core\output\notification::NOTIFY_WARNING
+    );
 }
 
 echo $OUTPUT->header();
@@ -123,10 +179,12 @@ if ($campaigns) {
             : get_string('campaignclosed', 'tool_flexaccess');
         $count = (int) $campaign->redemptioncount
             . ((int) $campaign->maxredemptions > 0 ? ' / ' . (int) $campaign->maxredemptions : '');
-        $link = new moodle_url('/admin/tool/flexaccess/campaign.php', ['token' => $campaign->token]);
         $editurl = new moodle_url($returnurl, ['action' => 'edit', 'id' => $campaign->id]);
-        $deleteurl = new moodle_url($returnurl, ['action' => 'delete', 'id' => $campaign->id, 'sesskey' => sesskey()]);
+        $deleteurl = new moodle_url($returnurl, ['action' => 'confirmdelete', 'id' => $campaign->id]);
+        $rotateurl = new moodle_url($returnurl, ['action' => 'confirmrotate', 'id' => $campaign->id]);
         $actions = html_writer::link($editurl, get_string('edit'))
+            . ' · '
+            . html_writer::link($rotateurl, get_string('campaignrotate', 'tool_flexaccess'))
             . ' · '
             . html_writer::link($deleteurl, get_string('delete'));
         $table->data[] = [
@@ -136,7 +194,7 @@ if ($campaigns) {
                 : ('#' . $campaign->courseid),
             $status,
             $count,
-            html_writer::link($link, get_string('campaigncopylink', 'tool_flexaccess')),
+            get_string('campaignlinkhidden', 'tool_flexaccess'),
             $actions,
         ];
     }

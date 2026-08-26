@@ -42,6 +42,20 @@ final class campaign {
     }
 
     /**
+     * Hash a campaign token for storage.
+     *
+     * The token is a bearer secret: anyone holding it can redeem the campaign. Only its hash is
+     * stored, so a database leak (or an administrator browsing the table) does not hand out working
+     * links, and a lost link can be rotated but never recovered.
+     *
+     * @param string $token Clear token.
+     * @return string SHA-256 hash.
+     */
+    public static function hash_token(string $token): string {
+        return hash('sha256', trim($token));
+    }
+
+    /**
      * Hash a shared gate password for storage (empty stays empty).
      *
      * @param string $password Clear password.
@@ -76,7 +90,7 @@ final class campaign {
         if ($token === '') {
             return null;
         }
-        $record = $DB->get_record(self::TABLE, ['token' => $token]);
+        $record = $DB->get_record(self::TABLE, ['tokenhash' => self::hash_token($token)]);
         return $record ?: null;
     }
 
@@ -105,19 +119,44 @@ final class campaign {
     /**
      * Create a campaign from normalised form data.
      *
+     * The plaintext token is returned to the caller so it can be shown to the administrator once;
+     * it is not stored and cannot be recovered later - only rotated.
+     *
      * @param array $data Field values (name, courseid, enabled, window, maxredemptions, gate*).
-     * @return int New campaign id.
+     * @return array{id:int, token:string} New campaign id and its one-time plaintext token.
      */
-    public static function create(array $data): int {
+    public static function create(array $data): array {
         global $DB, $USER;
         $now = time();
+        $token = self::unique_token();
         $record = self::normalise($data);
-        $record->token = self::unique_token();
+        $record->tokenhash = self::hash_token($token);
         $record->redemptioncount = 0;
         $record->timecreated = $now;
         $record->timemodified = $now;
         $record->usermodified = (int) $USER->id;
-        return (int) $DB->insert_record(self::TABLE, $record);
+        return ['id' => (int) $DB->insert_record(self::TABLE, $record), 'token' => $token];
+    }
+
+    /**
+     * Issue a new token for a campaign, invalidating the previous link.
+     *
+     * The only supported way to recover from a lost link: the old hash is replaced, so any link
+     * already handed out stops working immediately.
+     *
+     * @param int $id Campaign id.
+     * @return string|null The new plaintext token, or null if the campaign does not exist.
+     */
+    public static function rotate_token(int $id): ?string {
+        global $DB, $USER;
+        if (!self::get($id)) {
+            return null;
+        }
+        $token = self::unique_token();
+        $DB->set_field(self::TABLE, 'tokenhash', self::hash_token($token), ['id' => $id]);
+        $DB->set_field(self::TABLE, 'timemodified', time(), ['id' => $id]);
+        $DB->set_field(self::TABLE, 'usermodified', (int) $USER->id, ['id' => $id]);
+        return $token;
     }
 
     /**
@@ -325,7 +364,7 @@ final class campaign {
         global $DB;
         do {
             $token = self::generate_token();
-        } while ($DB->record_exists(self::TABLE, ['token' => $token]));
+        } while ($DB->record_exists(self::TABLE, ['tokenhash' => self::hash_token($token)]));
         return $token;
     }
 }

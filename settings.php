@@ -74,4 +74,12 @@ if ($hassiteconfig) {
         new moodle_url('/admin/tool/flexaccess/batches.php'),
         'tool/flexaccess:managebatches'
     ));
+
+    // Also surface the dashboard under Users > User accounts, where account-oriented admins look.
+    $ADMIN->add('accounts', new admin_externalpage(
+        'tool_flexaccess_dashboard_accounts',
+        get_string('pluginname', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/index.php'),
+        'tool/flexaccess:viewdashboard'
+    ));
 }
