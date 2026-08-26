@@ -57,6 +57,9 @@ final class batch {
     /** Provisioning failed and was rolled back. */
     public const STATUS_FAILED = 'failed';
 
+    /** A conversion import is running for this batch. */
+    public const STATUS_CONVERTING = 'converting';
+
     /** Unambiguous alphabet for usernames/passwords (no 0/O/1/l/I). */
     private const ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
 
@@ -575,6 +578,69 @@ final class batch {
     }
 
     /**
+     * Mark a batch as having a conversion import in progress.
+     *
+     * @param int $batchid Batch id.
+     * @param int $total Number of rows to process.
+     * @return void
+     */
+    public static function mark_converting(int $batchid, int $total): void {
+        global $DB;
+        $DB->set_field(self::TABLE, 'status', self::STATUS_CONVERTING, ['id' => $batchid]);
+        $DB->set_field(
+            self::TABLE,
+            'statusmessage',
+            get_string('batchconvertprogress', 'tool_flexaccess', (object) ['done' => 0, 'total' => $total]),
+            ['id' => $batchid]
+        );
+    }
+
+    /**
+     * Write back how far a running conversion has got, so progress is visible while it runs.
+     *
+     * @param int $batchid Batch id.
+     * @param int $done Rows converted so far.
+     * @return void
+     */
+    public static function report_convert_progress(int $batchid, int $done): void {
+        global $DB;
+        $batch = self::get($batchid);
+        if (!$batch) {
+            return;
+        }
+        $total = (int) $batch->requestedcount ?: (int) $batch->membercount;
+        $DB->set_field(
+            self::TABLE,
+            'statusmessage',
+            get_string('batchconvertprogress', 'tool_flexaccess', (object) ['done' => $done, 'total' => $total]),
+            ['id' => $batchid]
+        );
+    }
+
+    /**
+     * Record the outcome of a finished conversion import.
+     *
+     * @param int $batchid Batch id.
+     * @param int $converted Rows converted.
+     * @param int $skipped Rows skipped or failed.
+     * @return void
+     */
+    public static function finish_converting(int $batchid, int $converted, int $skipped): void {
+        global $DB;
+        $DB->set_field(self::TABLE, 'status', self::STATUS_COMPLETE, ['id' => $batchid]);
+        $DB->set_field(
+            self::TABLE,
+            'statusmessage',
+            get_string(
+                'batchconvertdone',
+                'tool_flexaccess',
+                (object) ['converted' => $converted, 'skipped' => $skipped]
+            ),
+            ['id' => $batchid]
+        );
+    }
+
+    /**
      * Human-readable provisioning status of a batch, including progress while it is being filled.
      *
      * @param \stdClass $batch Batch record.
@@ -583,6 +649,10 @@ final class batch {
     public static function status_label(\stdClass $batch): string {
         $status = (string) ($batch->status ?? self::STATUS_COMPLETE);
         $label = get_string('batchstatus' . $status, 'tool_flexaccess');
+        if ($status === self::STATUS_CONVERTING && !empty($batch->statusmessage)) {
+            // A running conversion reports its own row-level progress.
+            return $label . ' (' . s((string) $batch->statusmessage) . ')';
+        }
         if ($status === self::STATUS_FAILED && !empty($batch->statusmessage)) {
             // Show the administrator why it failed instead of a bare "failed".
             $label .= ' (' . s((string) $batch->statusmessage) . ')';

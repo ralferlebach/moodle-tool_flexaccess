@@ -56,10 +56,23 @@ if ($form->is_cancelled()) {
     $form->save_file('excelfile', $path, true);
 
     $rows = batch_import::parse($path);
-    $result = batch_import::convert($id, $rows, $data->usernamerule, time());
+    // Small imports run inline; large ones are handed to an ad-hoc task so the request returns.
+    $result = batch_import::convert_dispatch($id, $rows, $data->usernamerule, time());
 
     echo $OUTPUT->header();
     echo $OUTPUT->heading(get_string('batchconvert', 'tool_flexaccess'));
+    if (!empty($result['queued'])) {
+        echo $OUTPUT->notification(
+            get_string('batchconvertqueued', 'tool_flexaccess', count($rows)),
+            \core\output\notification::NOTIFY_INFO
+        );
+        echo $OUTPUT->continue_button(new moodle_url('/admin/tool/flexaccess/batches.php', [
+            'action' => 'view',
+            'id' => $id,
+        ]));
+        echo $OUTPUT->footer();
+        die;
+    }
     echo $OUTPUT->notification(
         get_string('batchconvertsummary', 'tool_flexaccess', (object) [
             'converted' => $result['converted'],

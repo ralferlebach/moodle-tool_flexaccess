@@ -50,6 +50,12 @@ final class batch_import {
     /** Maximum accepted import file size (2 MiB) - guards the XLSX reader (P0-4). */
     public const MAX_IMPORT_BYTES = 2097152;
 
+    /** Rows converted before progress is written back; keeps each unit of work small. */
+    public const CONVERT_CHUNK = 25;
+
+    /** Above this many rows, conversion is handed to an ad-hoc task instead of the web request. */
+    public const MAX_SYNC_CONVERT = 100;
+
     /** Schema marker written to H1 by the exporter; the importer accepts only this format. */
     public const SCHEMA_VERSION = 'FLEXACCESS-BATCH-V1';
 
@@ -156,6 +162,58 @@ final class batch_import {
     }
 
     /**
+     * Record on the member itself why its conversion attempt failed.
+     *
+     * Aggregate counts do not tell an administrator which of 2000 rows went wrong; the reason is
+     * therefore attached to the member and survives the request.
+     *
+     * @param \stdClass $member Batch member record.
+     * @param string $message Human-readable reason.
+     * @return void
+     */
+    private static function record_member_error(\stdClass $member, string $message): void {
+        global $DB;
+        $DB->set_field(
+            self::MEMBER_TABLE,
+            'converterror',
+            \core_text::substr($message, 0, 255),
+            ['id' => $member->id]
+        );
+    }
+
+    /**
+     * Convert an import, synchronously for small files and via an ad-hoc task for large ones.
+     *
+     * Per row the conversion performs several database, identity and mail operations, so a large
+     * import must not sit in a web request. Callers get an immediate answer either way.
+     *
+     * @param int $batchid Batch id.
+     * @param array $rows Parsed import rows.
+     * @param string $usernamerule Username rule to apply.
+     * @param int|null $now Current time.
+     * @return array{queued:bool, converted:int, skipped:int, errors:array<string>}
+     */
+    public static function convert_dispatch(
+        int $batchid,
+        array $rows,
+        string $usernamerule = self::RULE_EMAIL,
+        ?int $now = null
+    ): array {
+        if (count($rows) <= self::MAX_SYNC_CONVERT) {
+            return ['queued' => false] + self::convert($batchid, $rows, $usernamerule, $now);
+        }
+        batch::mark_converting($batchid, count($rows));
+        $task = new \tool_flexaccess\task\convert_batch();
+        $task->set_custom_data([
+            'batchid' => $batchid,
+            'rows' => $rows,
+            'usernamerule' => $usernamerule,
+        ]);
+        \core\task\manager::queue_adhoc_task($task);
+        return ['queued' => true, 'converted' => 0, 'skipped' => 0, 'errors' => []];
+    }
+
+    /**
      * Convert the accounts described by $rows to permanent accounts with email confirmation.
      *
      * @param int $batchid Batch whose members these rows belong to.
@@ -176,9 +234,27 @@ final class batch_import {
         $skipped = 0;
         $errors = [];
 
+        // Load the batch's members once and index them by username, instead of a query per row.
+        $members = [];
+        foreach ($DB->get_records(self::MEMBER_TABLE, ['batchid' => $batchid]) as $record) {
+            $members[$record->username] = $record;
+        }
+        batch::mark_converting($batchid, count($rows));
+        $processed = 0;
+
         foreach ($rows as $row) {
+            $processed++;
+            if ($processed % self::CONVERT_CHUNK === 0) {
+                batch::report_convert_progress($batchid, $converted);
+            }
             $username = $row['username'];
-            $member = $DB->get_record(self::MEMBER_TABLE, ['batchid' => $batchid, 'username' => $username]);
+            $member = $members[$username] ?? null;
+            if ($member && !empty($member->converted)) {
+                // Already converted (e.g. this import is being retried): skip silently so no second
+                // identity transition happens and no duplicate set-password mail goes out.
+                $skipped++;
+                continue;
+            }
             if (!$member) {
                 $skipped++;
                 $errors[] = get_string('batcherr_notfound', 'tool_flexaccess', $username);
@@ -187,7 +263,9 @@ final class batch_import {
             $email = trim($row['email']);
             if ($email === '') {
                 $skipped++;
-                $errors[] = get_string('batcherr_noemail', 'tool_flexaccess', $username);
+                $message = get_string('batcherr_noemail', 'tool_flexaccess', $username);
+                $errors[] = $message;
+                self::record_member_error($member, $message);
                 continue;
             }
             $userid = (int) $member->userid;
@@ -197,11 +275,13 @@ final class batch_import {
             $status = \auth_flexaccess\api::admin_convert($userid, $email, $row['firstname'], $row['lastname'], $now);
             if ($status !== 'converted') {
                 $skipped++;
-                $errors[] = get_string(
+                $message = get_string(
                     'batcherr_convert',
                     'tool_flexaccess',
                     (object) ['username' => $username, 'status' => $status]
                 );
+                $errors[] = $message;
+                self::record_member_error($member, $message);
                 continue;
             }
 
@@ -211,11 +291,13 @@ final class batch_import {
                     $DB->set_field(self::MEMBER_TABLE, 'username', $target, ['id' => $member->id]);
                 } else {
                     // Conversion succeeded; only the rename failed (username taken/invalid).
-                    $errors[] = get_string(
+                    $message = get_string(
                         'batcherr_rename',
                         'tool_flexaccess',
                         (object) ['username' => $username, 'target' => $target]
                     );
+                    $errors[] = $message;
+                    self::record_member_error($member, $message);
                     $DB->set_field(self::MEMBER_TABLE, 'username', $email, ['id' => $member->id]);
                 }
             } else {
@@ -224,9 +306,11 @@ final class batch_import {
             // Mark the member as no longer batch-managed: a later credential re-issue must never
             // touch this now-personalised, permanent account (P0-1).
             $DB->set_field(self::MEMBER_TABLE, 'converted', 1, ['id' => $member->id]);
+            $DB->set_field(self::MEMBER_TABLE, 'converterror', null, ['id' => $member->id]);
             $converted++;
         }
 
+        batch::finish_converting($batchid, $converted, $skipped);
         return ['converted' => $converted, 'skipped' => $skipped, 'errors' => $errors];
     }
 

@@ -250,5 +250,16 @@ function xmldb_tool_flexaccess_upgrade($oldversion) {
         }
         upgrade_plugin_savepoint(true, 2026082425, 'tool', 'flexaccess');
     }
+    if ($oldversion < 2026082427) {
+        $dbman = $DB->get_manager();
+        // Per-member record of why a conversion attempt failed, so a partial import is diagnosable
+        // row by row instead of only as an aggregate count.
+        $table = new xmldb_table('tool_flexaccess_batch_member');
+        $field = new xmldb_field('converterror', XMLDB_TYPE_CHAR, '255', null, null, null, null, 'converted');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        upgrade_plugin_savepoint(true, 2026082427, 'tool', 'flexaccess');
+    }
     return true;
 }

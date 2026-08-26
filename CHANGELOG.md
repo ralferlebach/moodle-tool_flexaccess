@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.50 — 2026-08-26 — P1-3 Conversion asynchron + Privacy-Tests
+- **Conversion-Import asynchronisiert (P1-3).** Sync-Obergrenze `MAX_SYNC_CONVERT = 100`; größere Importe übernimmt der neue Ad-hoc-Task `convert_batch`, die Seite kehrt sofort zurück.
+- **Kein N+1 mehr:** Die Batch-Mitglieder werden einmal vorab geladen und nach Anmeldename indiziert, statt je Zeile erneut abgefragt zu werden.
+- **Idempotent:** Bereits konvertierte Mitglieder werden übersprungen. Ein wiederholter Lauf (etwa ein von Moodle erneut ausgeführter Task) erzeugt damit keine zweite Identitätsumstellung und **keine doppelte Set-Password-Mail**.
+- **Teilfehler mitgliedsbezogen:** Neues Feld `converterror` auf `tool_flexaccess_batch_member` (Upgrade `2026082427`, additiv) hält je Mitglied fest, warum die Umwandlung scheiterte — statt nur einer Gesamtzahl bei 2000 Zeilen.
+- **Fortschritt sichtbar:** Neuer Status `converting`, Fortschritt wird alle 25 Zeilen zurückgeschrieben und in der Liste angezeigt.
+- **Privacy-Tests für Batchdaten** (`privacy_batch_test`): Mitgliedschaft liefert einen Context, wird exportiert und beim Löschen des Contexts vollständig entfernt.
+- Tests: `batch_convert_async_test` (Retry ohne Doppelmails, Hintergrundlauf, zeilenbezogener Fehler).
+- Versions-Gleichschritt `2026082427`.
+
 ## 0.9.49 — 2026-08-26 — CI-Fix: XMLDB-Debugmeldung beim Kampagnen-Token
 - **CI-Blocker behoben.** Das in 0.9.48 eingeführte Feld `tokenhash` war als `CHAR NOT NULL` mit `DEFAULT=""` deklariert. XMLDB gibt dafür eine Debug-Meldung aus und korrigiert den Default stillschweigend; `moodle-plugin-ci` wertet jede Debug-Meldung während der PHPUnit-Initialisierung als Fehler. Dadurch scheiterte der Install-Schritt in **allen vier** Repositories (die Geschwister-Plugins werden ja mitinstalliert) — die Quality-Jobs mit `--no-init` liefen weiterhin durch, was das Bild verschleierte. Feld und Upgrade-Schritt deklarieren jetzt keinen Default mehr.
 - Versions-Gleichschritt `2026082426`.
