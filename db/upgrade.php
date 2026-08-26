@@ -177,5 +177,16 @@ function xmldb_tool_flexaccess_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026081920, 'tool', 'flexaccess');
     }
 
+    if ($oldversion < 2026082415) {
+        $dbman = $DB->get_manager();
+        // P0-1: mark batch members that have left batch management (personalised/converted), so
+        // their password can never be rotated again by a batch credential re-issue.
+        $table = new xmldb_table('tool_flexaccess_batch_member');
+        $field = new xmldb_field('converted', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'username');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        upgrade_plugin_savepoint(true, 2026082415, 'tool', 'flexaccess');
+    }
     return true;
 }

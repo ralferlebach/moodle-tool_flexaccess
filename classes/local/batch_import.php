@@ -47,6 +47,12 @@ final class batch_import {
     /** Username rule: firstname.lastname. */
     public const RULE_FIRSTLAST = 'firstlast';
 
+    /** Maximum accepted import file size (2 MiB) - guards the XLSX reader (P0-4). */
+    public const MAX_IMPORT_BYTES = 2097152;
+
+    /** Maximum data rows read from an import file, bounding the row iterator (P0-4). */
+    public const MAX_IMPORT_ROWS = 2000;
+
     /**
      * The selectable username rules, for a form select.
      *
@@ -67,18 +73,25 @@ final class batch_import {
      * Columns follow the export layout: A username (match key), C first name, D last name, E email,
      * G optional new username. The header row is skipped.
      *
+     * Hardened against the PhpSpreadsheet unbounded-row-dimension CPU DoS (CVE-2026-40902): the file
+     * size is capped, an explicit read-only Xlsx reader is used (no format sniffing), and the row
+     * iteration is bounded to a fixed window regardless of the sheet's declared dimensions (P0-4).
+     *
      * @param string $filepath Absolute path to the uploaded .xlsx file.
      * @return array<int,array{username:string,firstname:string,lastname:string,email:string,newusername:string}>
      */
     public static function parse(string $filepath): array {
-        $reader = IOFactory::createReaderForFile($filepath);
+        if (!is_readable($filepath) || filesize($filepath) > self::MAX_IMPORT_BYTES) {
+            throw new \moodle_exception('batch:importtoolarge', 'tool_flexaccess');
+        }
+        $reader = IOFactory::createReader('Xlsx');
         $reader->setReadDataOnly(true);
         $spreadsheet = $reader->load($filepath);
         $sheet = $spreadsheet->getActiveSheet();
 
         $rows = [];
         $first = true;
-        foreach ($sheet->getRowIterator() as $row) {
+        foreach ($sheet->getRowIterator(1, self::MAX_IMPORT_ROWS + 1) as $row) {
             if ($first) {
                 $first = false;
                 continue;
@@ -170,6 +183,9 @@ final class batch_import {
             } else {
                 $DB->set_field(self::MEMBER_TABLE, 'username', $email, ['id' => $member->id]);
             }
+            // Mark the member as no longer batch-managed: a later credential re-issue must never
+            // touch this now-personalised, permanent account (P0-1).
+            $DB->set_field(self::MEMBER_TABLE, 'converted', 1, ['id' => $member->id]);
             $converted++;
         }
 

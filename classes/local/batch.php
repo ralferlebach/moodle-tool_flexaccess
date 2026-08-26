@@ -21,8 +21,9 @@ namespace tool_flexaccess\local;
  *
  * An administrator creates N accounts (temporary/restricted or permanent/full) with random
  * usernames and passwords, enrolled into a target course through the FlexAccess enrol instance.
- * Plain passwords are never stored: they exist only in memory during creation and export, and can be
- * re-issued on demand via {@see reset_credentials()} (which resets every member's password).
+ * Plain passwords are never stored: they exist only in memory during creation and export. Passwords
+ * can be re-issued via {@see reset_credentials()}, which rotates the password of every member that
+ * is still batch-managed and skips any member that has been personalised/converted (P0-1).
  *
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -337,9 +338,16 @@ final class batch {
     public static function reset_credentials(int $batchid, int $passwordlength = 10): array {
         $credentials = [];
         foreach (self::members($batchid) as $member) {
+            // Never rotate the password of a member that has left batch management (personalised /
+            // converted to a permanent account): doing so would be a credential takeover (P0-1).
+            // The stored flag is the authority; set_account_password() enforces the same rule again.
+            if (!empty($member->converted)) {
+                continue;
+            }
             $password = self::generate_password($passwordlength);
-            \auth_flexaccess\api::set_account_password((int) $member->userid, $password);
-            $credentials[$member->username] = $password;
+            if (\auth_flexaccess\api::set_account_password((int) $member->userid, $password)) {
+                $credentials[$member->username] = $password;
+            }
         }
         return $credentials;
     }

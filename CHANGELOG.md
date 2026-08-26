@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.9.39 — 2026-08-25 — Versions-Gleichschritt (enrol: Zugangsschlüssel-Fix)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082416`.
+
+## 0.9.38 — 2026-08-25 — Security-Härtung (Review-P0/P1) + CI-Rollback
+- **P0-1 Batch-Credential-Takeover behoben:** Neues Feld `converted` auf `tool_flexaccess_batch_member`. Bei Personalisierung/Konversion (`batch_import::convert`) wird das Mitglied als nicht mehr batch-verwaltet markiert; `batch::reset_credentials` überspringt solche Konten. Damit kann eine Credential-Neuausgabe niemals das Passwort eines inzwischen persistenten, personalisierten Nutzers rotieren. Zweite Verteidigungslinie in auth (siehe auth-CHANGELOG). Reproduzierender Test `batch_credential_lifecycle_test`.
+- **P0-2 Invitation-Token nicht mehr im Klartext at rest:** `invitation`-Mails werden jetzt sofort versendet (`auth_flexaccess\api::send_mail_now`); der Einmal-Token steht nur noch im ausgehenden Link und wird nirgends persistent gespeichert (die Queue enthält keine Token-Payloads mehr). Der irreführende Kommentar wurde korrigiert.
+- **P1 (Invitation):** `timesent`/`timereminded`/`remindercount` werden erst nach **erfolgreichem** Versand gesetzt (kein „gesendet", wenn der Mailversand fehlschlug).
+- **P0-3 Batch-Privacy vollständig:** `get_contexts_for_userid` erfasst jetzt `batch.usermodified` und Batch-Mitgliedschaften; `export_user_data` exportiert Batch-Modifikationen und Mitgliedschaften; `delete_data_for_all_users_in_context` entfernt zusätzlich Batch-Mitgliedschaften und anonymisiert Einladungs-E-Mails.
+- **P0-4 XLSX-Import gehärtet (CVE-2026-40902):** Dateigrößen-Limit (2 MiB), expliziter read-only `Xlsx`-Reader (kein Format-Sniffing), und **gebundene Zeilen-Iteration** (`getRowIterator(1, MAX+1)`, max. 2000 Datenzeilen) — neutralisiert die unbounded-row-dimension-DoS unabhängig von den deklarierten Dimensionen. Upload mit `maxbytes`.
+- **CI:** Rückrollung der Dev-Pipeline-Änderung — Geschwister werden wieder aus dem Default-Branch (`main`) gezogen.
+- Versions-Gleichschritt `2026082415`.
+
+## 0.9.38 — 2026-08-25 — CI-Rollback + P0-Security-Härtung
+
+- **CI:** Rücknahme der develop-Branch-Umstellung (Dev-Pipeline zieht Geschwister wieder aus `main`).
+- **P0-1 (Credential-Takeover behoben):** Neues `converted`-Flag an `tool_flexaccess_batch_member` (install.xml + Upgrade `2026082415`); bei Konversion gesetzt. `reset_credentials()` überspringt konvertierte/personalisierte Mitglieder, sodass ein Batch-Download niemals das Passwort eines inzwischen permanenten Nutzers rotiert. Zweite Verteidigungslinie in `auth::set_account_password()`.
+- **P0-2 (Bearer-Token nicht mehr at rest):** Invitation-Mails werden sofort versendet (Token nur im Speicher, nie in der Mailqueue). Irreführender Kommentar korrigiert. **P1:** `timesent`/`timereminded` werden erst nach erfolgreichem Versand gesetzt.
+- **P0-3 (Privacy vollständig):** `get_contexts_for_userid`, `export_user_data` und `delete_data_for_all_users_in_context` decken jetzt Batches und Batch-Mitgliedschaften ab (inkl. Löschen der Batch-Member und Invite-E-Mails).
+- **P0-4 (XLSX-DoS/CVE-2026-40902):** Import gehärtet — expliziter Xlsx-Reader, Dateigrößenlimit (2 MiB), harte Begrenzung der Zeilen-Iteration (`getRowIterator(1, 2001)`) unabhängig von deklarierten Dimensionen; `maxbytes` am Upload.
+- Versions-Gleichschritt `2026082415`.
+
 ## 0.9.37 — 2026-08-25 — CI: Dev-Pipeline zieht Geschwister aus develop
 - Die **Dev-Pipeline** (`moodle-plugin-ci-dev.yml`) holt die Geschwister-Plugins jetzt per `add-plugin … --branch develop` aus dem **develop-Branch** statt aus `main`. Damit testet die beschleunigte Pipeline den echten Entwicklungsstand aller vier Plugins gemeinsam — kein Skew mehr durch hinterherhängendes `main`. Die **Main-Pipeline** zieht weiterhin aus `main` (Release-Stand).
 - Versions-Gleichschritt auf `2026082414`.

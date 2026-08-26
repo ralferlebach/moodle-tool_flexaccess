@@ -95,6 +95,8 @@ final class provider implements
             $DB->record_exists(self::TABLE, ['usermodified' => $userid])
                 || $DB->record_exists(self::INVITE_TABLE, ['usermodified' => $userid])
                 || ($email !== '' && $DB->record_exists(self::INVITE_TABLE, ['email' => $email]))
+                || $DB->record_exists(self::BATCH_TABLE, ['usermodified' => $userid])
+                || $DB->record_exists(self::BATCH_MEMBER_TABLE, ['userid' => $userid])
         ) {
             $contextlist->add_system_context();
         }
@@ -164,6 +166,28 @@ final class provider implements
                     ]
                 );
             }
+            // Batches this user last modified.
+            $batches = $DB->get_records(self::BATCH_TABLE, ['usermodified' => $userid], 'timecreated ASC');
+            foreach ($batches as $batch) {
+                writer::with_context($context)->export_data(
+                    ['tool_flexaccess', 'batch', (string) $batch->id],
+                    (object) [
+                        'name' => $batch->name,
+                        'timecreated' => \core_privacy\local\request\transform::datetime((int) $batch->timecreated),
+                    ]
+                );
+            }
+            // Batch memberships that belong to this user (their generated access-list account).
+            $memberships = $DB->get_records(self::BATCH_MEMBER_TABLE, ['userid' => $userid], 'id ASC');
+            foreach ($memberships as $membership) {
+                writer::with_context($context)->export_data(
+                    ['tool_flexaccess', 'batchmember', (string) $membership->id],
+                    (object) [
+                        'username' => $membership->username,
+                        'batchid' => (int) $membership->batchid,
+                    ]
+                );
+            }
         }
     }
 
@@ -181,7 +205,10 @@ final class provider implements
         if ($context instanceof \context_system) {
             $DB->set_field_select(self::TABLE, 'usermodified', 0, 'usermodified <> 0');
             $DB->set_field_select(self::INVITE_TABLE, 'usermodified', 0, 'usermodified <> 0');
+            $DB->set_field_select(self::INVITE_TABLE, 'email', '', "email <> ''");
             $DB->set_field_select(self::BATCH_TABLE, 'usermodified', 0, 'usermodified <> 0');
+            // Batch members are entirely personal (userid + username); purge them.
+            $DB->delete_records(self::BATCH_MEMBER_TABLE);
         }
     }
 

@@ -74,6 +74,7 @@ $string['batch:err_notfound'] = 'No matching account in this batch for username 
 $string['batch:err_rename'] = 'Converted "{$a->username}" but could not rename to "{$a->target}" (taken or invalid); username left as the email.';
 $string['batch:expiry'] = 'Expires after';
 $string['batch:expiry_help'] = 'How long the temporary accounts stay valid. Leave unset for the site default. Ignored for permanent accounts.';
+$string['batch:importtoolarge'] = 'The import file is too large or could not be read. Please upload a valid .xlsx export.';
 $string['batch:members'] = 'Accounts';
 $string['batch:name'] = 'Batch name';
 $string['batch:openincourse'] = 'Open in the course';

@@ -46,7 +46,7 @@ final class batch_convert_form extends \moodleform {
             'excelfile',
             get_string('batch:uploadfile', 'tool_flexaccess'),
             null,
-            ['accepted_types' => ['.xlsx']]
+            ['accepted_types' => ['.xlsx'], 'maxbytes' => \tool_flexaccess\local\batch_import::MAX_IMPORT_BYTES]
         );
         $mform->addRule('excelfile', get_string('required'), 'required', null, 'client');
 

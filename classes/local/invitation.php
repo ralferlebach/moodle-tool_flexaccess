@@ -196,7 +196,10 @@ final class invitation {
         if (!$invite || $invite->status !== self::STATUS_PENDING) {
             return false;
         }
-        self::queue_mail($invite, self::issue_token($id), 'invite:emailsubject', 'invite:emailbody', $now);
+        if (!self::queue_mail($invite, self::issue_token($id), 'invite:emailsubject', 'invite:emailbody', $now)) {
+            return false;
+        }
+        // Record the actual send time, not the (former) queue time (P1).
         $DB->set_field(self::TABLE, 'timesent', $now, ['id' => $id]);
         return true;
     }
@@ -218,7 +221,9 @@ final class invitation {
         if ((int) $invite->timeexpires > 0 && $now > (int) $invite->timeexpires) {
             return false;
         }
-        self::queue_mail($invite, self::issue_token($id), 'invite:remindersubject', 'invite:reminderbody', $now);
+        if (!self::queue_mail($invite, self::issue_token($id), 'invite:remindersubject', 'invite:reminderbody', $now)) {
+            return false;
+        }
         $DB->set_field(self::TABLE, 'timereminded', $now, ['id' => $id]);
         $DB->set_field(self::TABLE, 'remindercount', (int) $invite->remindercount + 1, ['id' => $id]);
         return true;
@@ -371,18 +376,18 @@ final class invitation {
         string $subjectkey,
         string $bodykey,
         int $now
-    ): void {
+    ): bool {
         if (!class_exists('\auth_flexaccess\api')) {
-            // The auth plugin (a declared dependency) is not available; nothing can be queued.
-            return;
+            // The auth plugin (a declared dependency) is not available; nothing can be sent.
+            return false;
         }
-        // The plaintext token exists only here, rendered into the outgoing single-use link; at rest
-        // the invitation keeps only its hash. The queued mail row is pruned after delivery.
+        // P0-2: the single-use token is rendered into the link and sent immediately. It is never
+        // written to the mail queue (or anywhere else) at rest; the invitation keeps only its hash.
         $link = (new \moodle_url('/admin/tool/flexaccess/invite.php', ['token' => $token]))->out(false);
         $subject = get_string($subjectkey, 'tool_flexaccess');
         $body = get_string($bodykey, 'tool_flexaccess', $link);
         $bodyhtml = \html_writer::tag('p', get_string($bodykey, 'tool_flexaccess', \html_writer::link($link, $link)));
-        \auth_flexaccess\api::queue_mail(null, $invite->email, $subject, $body, $bodyhtml, 'invite', $now);
+        return \auth_flexaccess\api::send_mail_now(null, $invite->email, $subject, $body, $bodyhtml);
     }
 
     /**

@@ -48,33 +48,28 @@ final class invitation_test extends \advanced_testcase {
      * @return void
      */
     private function require_auth_queue(): void {
-        global $DB;
-        if (
-            !class_exists('\\auth_flexaccess\\api')
-                || !$DB->get_manager()->table_exists('auth_flexaccess_mailqueue')
-        ) {
-            $this->markTestSkipped('auth_flexaccess (mail queue) is not installed.');
+        if (!class_exists('\\auth_flexaccess\\api')) {
+            $this->markTestSkipped('auth_flexaccess is not installed.');
         }
     }
 
     /**
-     * Send an invitation and return the plaintext single-use token from the queued mail. The token
-     * only ever exists in the outgoing mail (the invitation stores just its hash), so this mirrors
-     * the real acceptance path. Requires the auth mail queue.
+     * Send an invitation and return the plaintext single-use token from the sent mail. The token
+     * only ever exists in the outgoing mail (the invitation stores just its hash and the mail is
+     * never persisted at rest), so this mirrors the real acceptance path.
      *
      * @param int $id Invitation id.
      * @return string
      */
     private function sent_token(int $id): string {
-        global $DB;
         $this->require_auth_queue();
+        $sink = $this->redirectEmails();
         invitation::send($id);
-        $invite = invitation::get($id);
-        $jobs = $DB->get_records('auth_flexaccess_mailqueue', ['recipient' => $invite->email], 'id DESC', '*', 0, 1);
-        $job = reset($jobs);
-        $payload = json_decode($job->payloadjson);
-        preg_match('/token=([A-Za-z0-9]+)/', $payload->body, $m);
-        return $m[1];
+        $messages = $sink->get_messages();
+        $sink->close();
+        $body = $messages ? quoted_printable_decode((string) end($messages)->body) : '';
+        preg_match('/token=([0-9a-f]{32})/', $body, $m);
+        return $m[1] ?? '';
     }
 
     /**
@@ -113,6 +108,25 @@ final class invitation_test extends \advanced_testcase {
         $this->assertFalse(invitation::is_acceptable(invitation::get($id)));
     }
 
+    public function test_token_is_never_persisted_at_rest(): void {
+        $this->require_auth_queue();
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $sink = $this->redirectEmails();
+        $id = $this->make('d@example.com');
+        invitation::send($id);
+        $messages = $sink->get_messages();
+        $sink->close();
+        // The mail carried a single-use token...
+        preg_match('/token=([0-9a-f]{32})/', quoted_printable_decode((string) end($messages)->body), $m);
+        $token = $m[1] ?? '';
+        $this->assertNotEmpty($token);
+        // ...but nothing is persisted in the mail queue, and the invitation stores only its hash.
+        $this->assertSame(0, $DB->count_records('auth_flexaccess_mailqueue'));
+        $this->assertNotSame($token, (string) invitation::get($id)->tokenhash);
+    }
+
     /**
      * send queues mail and stamps timesent; remind requires a prior send.
      *
@@ -120,7 +134,6 @@ final class invitation_test extends \advanced_testcase {
      */
     public function test_send_and_remind(): void {
         $this->require_auth_queue();
-        global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
         $sink = $this->redirectEmails();
@@ -131,12 +144,12 @@ final class invitation_test extends \advanced_testcase {
 
         $this->assertTrue(invitation::send($id));
         $this->assertGreaterThan(0, (int) invitation::get($id)->timesent);
-        // One job queued for the recipient.
-        $this->assertSame(1, $DB->count_records('auth_flexaccess_mailqueue', ['recipient' => 'c@example.com']));
+        // One mail sent to the recipient (never persisted at rest).
+        $this->assertCount(1, $sink->get_messages());
 
         $this->assertTrue(invitation::remind($id));
         $this->assertSame(1, (int) invitation::get($id)->remindercount);
-        $this->assertSame(2, $DB->count_records('auth_flexaccess_mailqueue', ['recipient' => 'c@example.com']));
+        $this->assertCount(2, $sink->get_messages());
         $sink->close();
     }
 

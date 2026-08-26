@@ -74,6 +74,7 @@ $string['batch:err_notfound'] = 'Kein passender Account in diesem Stapel für Nu
 $string['batch:err_rename'] = '„{$a->username}" umgewandelt, aber Umbenennung in „{$a->target}" nicht möglich (belegt oder ungültig); Nutzerkennung bleibt die E-Mail.';
 $string['batch:expiry'] = 'Läuft ab nach';
 $string['batch:expiry_help'] = 'Wie lange die vorläufigen Accounts gültig bleiben. Leer lassen für den Standardwert. Bei dauerhaften Accounts ohne Wirkung.';
+$string['batch:importtoolarge'] = 'Die Importdatei ist zu groß oder nicht lesbar. Bitte laden Sie einen gültigen .xlsx-Export hoch.';
 $string['batch:members'] = 'Konten';
 $string['batch:name'] = 'Stapelname';
 $string['batch:openincourse'] = 'Im Kurs öffnen';
