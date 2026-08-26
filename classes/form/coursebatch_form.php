@@ -40,16 +40,16 @@ final class coursebatch_form extends \moodleform {
     protected function definition(): void {
         $mform = $this->_form;
 
-        $mform->addElement('text', 'name', get_string('batch:name', 'tool_flexaccess'), ['size' => 48]);
+        $mform->addElement('text', 'name', get_string('batchname', 'tool_flexaccess'), ['size' => 48]);
         $mform->setType('name', PARAM_TEXT);
         $mform->addRule('name', get_string('required'), 'required', null, 'client');
 
-        $mform->addElement('select', 'permanent', get_string('batch:accounttype', 'tool_flexaccess'), [
-            0 => get_string('batch:type_temporary', 'tool_flexaccess'),
-            1 => get_string('batch:type_permanent', 'tool_flexaccess'),
+        $mform->addElement('select', 'permanent', get_string('batchaccounttype', 'tool_flexaccess'), [
+            0 => get_string('batchtype_temporary', 'tool_flexaccess'),
+            1 => get_string('batchtype_permanent', 'tool_flexaccess'),
         ]);
 
-        $mform->addElement('text', 'count', get_string('batch:count', 'tool_flexaccess'), ['size' => 6]);
+        $mform->addElement('text', 'count', get_string('batchcount', 'tool_flexaccess'), ['size' => 6]);
         $mform->setType('count', PARAM_INT);
         $mform->addRule('count', get_string('required'), 'required', null, 'client');
         $mform->setDefault('count', 10);
@@ -57,13 +57,13 @@ final class coursebatch_form extends \moodleform {
         $mform->addElement(
             'text',
             'usernameprefix',
-            get_string('batch:usernameprefix', 'tool_flexaccess'),
+            get_string('batchusernameprefix', 'tool_flexaccess'),
             ['size' => 16]
         );
         $mform->setType('usernameprefix', PARAM_ALPHANUM);
         $mform->setDefault('usernameprefix', 'kurs');
 
-        $this->add_action_buttons(true, get_string('batch:create', 'tool_flexaccess'));
+        $this->add_action_buttons(true, get_string('batchcreate', 'tool_flexaccess'));
     }
 
     /**
@@ -76,7 +76,7 @@ final class coursebatch_form extends \moodleform {
     public function validation($data, $files): array {
         $errors = parent::validation($data, $files);
         if ((int) $data['count'] < 1 || (int) $data['count'] > 1000) {
-            $errors['count'] = get_string('batch:countrange', 'tool_flexaccess');
+            $errors['count'] = get_string('batchcountrange', 'tool_flexaccess');
         }
         return $errors;
     }

@@ -57,13 +57,13 @@ if ($action === 'new' && $cancreate) {
         batch::create($data->name, $courseid, (bool) $data->permanent, (int) $data->count, $data->usernameprefix);
         redirect(
             $baseurl,
-            get_string('batch:created', 'tool_flexaccess', $data->count),
+            get_string('batchcreated', 'tool_flexaccess', $data->count),
             null,
             \core\output\notification::NOTIFY_SUCCESS
         );
     }
     echo $OUTPUT->header();
-    echo $OUTPUT->heading(get_string('batch:create', 'tool_flexaccess'));
+    echo $OUTPUT->heading(get_string('batchcreate', 'tool_flexaccess'));
     $form->display();
     echo $OUTPUT->footer();
     return;
@@ -101,7 +101,7 @@ echo html_writer::start_div('mb-3');
 if ($cancreate) {
     echo $OUTPUT->single_button(
         new moodle_url($baseurl, ['action' => 'new']),
-        get_string('batch:create', 'tool_flexaccess'),
+        get_string('batchcreate', 'tool_flexaccess'),
         'get'
     );
 } else {
@@ -132,10 +132,10 @@ if (!$batches) {
 
 $table = new html_table();
 $table->head = [
-    get_string('batch:name', 'tool_flexaccess'),
-    get_string('batch:accounttype', 'tool_flexaccess'),
-    get_string('batch:members', 'tool_flexaccess'),
-    get_string('batch:status', 'tool_flexaccess'),
+    get_string('batchname', 'tool_flexaccess'),
+    get_string('batchaccounttype', 'tool_flexaccess'),
+    get_string('batchmembers', 'tool_flexaccess'),
+    get_string('batchstatus', 'tool_flexaccess'),
     get_string('download'),
 ];
 foreach ($batches as $b) {
@@ -143,15 +143,15 @@ foreach ($batches as $b) {
     $links = html_writer::link(new moodle_url($dl, ['format' => 'excel']), 'XLSX')
         . ' · ' . html_writer::link(
             new moodle_url($dl, ['format' => 'pdflist']),
-            get_string('batch:downloadpdflist', 'tool_flexaccess')
+            get_string('batchdownloadpdflist', 'tool_flexaccess')
         )
         . ' · ' . html_writer::link(
             new moodle_url($dl, ['format' => 'cards']),
-            get_string('batch:downloadcards', 'tool_flexaccess')
+            get_string('batchdownloadcards', 'tool_flexaccess')
         );
     $type = $b->permanent
-        ? get_string('batch:type_permanent', 'tool_flexaccess')
-        : get_string('batch:type_temporary', 'tool_flexaccess');
+        ? get_string('batchtype_permanent', 'tool_flexaccess')
+        : get_string('batchtype_temporary', 'tool_flexaccess');
     // While a batch is still being provisioned there is nothing complete to issue credentials for.
     if (($b->status ?? batch::STATUS_COMPLETE) !== batch::STATUS_COMPLETE) {
         $links = '-';

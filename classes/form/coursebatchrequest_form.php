@@ -39,7 +39,7 @@ final class coursebatchrequest_form extends \moodleform {
 
         $mform->addElement('static', 'intro', '', get_string('coursebatches_requestintro', 'tool_flexaccess'));
 
-        $mform->addElement('text', 'count', get_string('batch:requestcount', 'tool_flexaccess'), ['size' => 6]);
+        $mform->addElement('text', 'count', get_string('batchrequestcount', 'tool_flexaccess'), ['size' => 6]);
         $mform->setType('count', PARAM_INT);
         $mform->addRule('count', get_string('required'), 'required', null, 'client');
         $mform->setDefault('count', 10);
@@ -57,7 +57,7 @@ final class coursebatchrequest_form extends \moodleform {
     public function validation($data, $files): array {
         $errors = parent::validation($data, $files);
         if ((int) $data['count'] < 1 || (int) $data['count'] > 1000) {
-            $errors['count'] = get_string('batch:countrange', 'tool_flexaccess');
+            $errors['count'] = get_string('batchcountrange', 'tool_flexaccess');
         }
         return $errors;
     }

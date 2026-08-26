@@ -44,11 +44,11 @@ if (!$usable) {
     $PAGE->set_context(context_system::instance());
     $PAGE->set_url(new moodle_url('/admin/tool/flexaccess/invite.php'));
     $PAGE->set_pagelayout('standard');
-    $PAGE->set_title(get_string('invite:title', 'tool_flexaccess'));
-    $PAGE->set_heading(get_string('invite:title', 'tool_flexaccess'));
+    $PAGE->set_title(get_string('invitetitle', 'tool_flexaccess'));
+    $PAGE->set_heading(get_string('invitetitle', 'tool_flexaccess'));
     echo $OUTPUT->header();
-    echo $OUTPUT->heading(get_string('invite:title', 'tool_flexaccess'));
-    echo $OUTPUT->notification(get_string('invite:unavailable', 'tool_flexaccess'), 'error');
+    echo $OUTPUT->heading(get_string('invitetitle', 'tool_flexaccess'));
+    echo $OUTPUT->notification(get_string('inviteunavailable', 'tool_flexaccess'), 'error');
     echo $OUTPUT->continue_button(new moodle_url('/login/index.php'));
     echo $OUTPUT->footer();
     exit;
@@ -59,7 +59,7 @@ $courseurl = new moodle_url('/course/view.php', ['id' => $invite->courseid]);
 $PAGE->set_context(context_course::instance((int) $invite->courseid));
 $PAGE->set_url(new moodle_url('/admin/tool/flexaccess/invite.php', ['token' => $token]));
 $PAGE->set_pagelayout('standard');
-$PAGE->set_title(get_string('invite:title', 'tool_flexaccess'));
+$PAGE->set_title(get_string('invitetitle', 'tool_flexaccess'));
 $PAGE->set_heading(format_string($course->fullname));
 
 if (isloggedin() && !isguestuser()) {
@@ -81,7 +81,7 @@ if ($form->is_cancelled()) {
     // the recipient can retry with the same single-use invitation.
     $reserved = invitation::reserve($token);
     if ($reserved === null) {
-        $failure = 'invite:unavailable';
+        $failure = 'inviteunavailable';
     } else {
         $result = \enrol_flexaccess\local\access_controller::grant_quick_registration((int) $invite->courseid, (object) [
             'email' => $invite->email,
@@ -95,22 +95,22 @@ if ($form->is_cancelled()) {
             $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);
             complete_user_login($user);
             $message = $result->status === 'verificationsent'
-                ? get_string('register:verificationsent', 'auth_flexaccess')
-                : get_string('register:success', 'auth_flexaccess');
+                ? get_string('registerverificationsent', 'auth_flexaccess')
+                : get_string('registersuccess', 'auth_flexaccess');
             redirect($courseurl, $message);
         }
         // Registration failed: hand the invitation back so it can be used again.
         invitation::release_reservation((int) $reserved->id);
-        $failure = 'access:' . $result->status;
+        $failure = 'access' . $result->status;
     }
 }
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(format_string($course->fullname));
 if ($failure !== null) {
-    $component = str_starts_with($failure, 'access:') ? 'auth_flexaccess' : 'tool_flexaccess';
+    $component = str_starts_with($failure, 'access') ? 'auth_flexaccess' : 'tool_flexaccess';
     echo $OUTPUT->notification(get_string($failure, $component), 'error');
 }
-echo html_writer::tag('p', get_string('invite:intro', 'tool_flexaccess', s($invite->email)));
+echo html_writer::tag('p', get_string('inviteintro', 'tool_flexaccess', s($invite->email)));
 $form->display();
 echo $OUTPUT->footer();

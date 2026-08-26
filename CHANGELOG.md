@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.46 — 2026-08-26 — Review 0.9.44: die drei P0-Blocker geschlossen
+- **P0-2 Invitations laufen wieder über die zentrale Mailqueue — und bleiben secret-free.** Der Sofortversand hatte zwar den Klartext-Token beseitigt, umging aber Stundenlimit, Retry/Backoff und Queue-Monitoring. Neu: eine *semantische, secret-freie* Queue-Zeile, die nur Renderer-Klasse und Einladungs-ID enthält (`kind: deferred`). Der neue `invitation_mail_renderer` erzeugt den Token erst im Worker unmittelbar vor dem Versand; `timesent`/`timereminded`/`remindercount` werden ausschließlich nach **tatsächlicher** Zustellung gestempelt. Eine zwischenzeitlich widerrufene oder abgelaufene Einladung erzeugt beim Zustellversuch gar keinen Token mehr.
+- **P0-3 Credential-Ausgabe nur noch per POST.** Die Bestätigung ist jetzt ein `single_button` mit `method=post`; zusätzlich wird `confirm` serverseitig nur bei `REQUEST_METHOD === 'POST'` akzeptiert. Ein state-changing GET (Prefetch, Crawler, geteilter Link) kann damit keine Passwortrotation mehr auslösen.
+- **P0-1 (Mitwirkung):** CLI-Guard (`PHP_SAPI !== 'cli'` → 403) in allen `tools/`-Skripten, platziert **vor** jedem Schreibzugriff — zweite Verteidigungslinie, falls eine Kopie doch auf einem web-erreichbaren Pfad landet.
+- Tests: `invitation_queue_integration_test` weist nach, dass Einladungen dem Stundenlimit unterliegen (bei erschöpftem Budget bleibt die zweite Einladung in der Queue) und dass eine widerrufene Einladung keinen Token mehr erzeugt; die Invitation-Tests bilden jetzt durchgehend die Queue-Semantik ab.
+- Versions-Gleichschritt `2026082423`.
+
+## 0.9.45 — 2026-08-26 — Review vollständig abgeschlossen
+- **Bugfix:** Der Message-Provider `batchrequest` hatte keinen `messageprovider:batchrequest`-Sprachstring und erschien in den Mitteilungseinstellungen als `[[messageprovider:batchrequest]]`. Beim Vereinheitlichen der String-IDs aufgefallen, zur Laufzeit reproduziert und behoben (en + de).
+- **String-IDs vereinheitlicht** (Colon → flach für allgemeine UI-Strings; Capability-, Privacy- und Message-Provider-Keys behalten konventionsgemäß den Doppelpunkt).
+- **`docs/review-0.9.35-status.md` aktualisiert:** Alle Punkte des externen Reviews sind abgearbeitet; es bestehen keine Rückstellungen mehr.
+- Versions-Gleichschritt `2026082422`.
+
+## 0.9.44 — 2026-08-25 — Review-Abschluss + Nachweisdokument
+- **Neu: `docs/review-0.9.35-status.md`** — vollständiger Abarbeitungsstand des externen Reviews: alle P0 und alle P1 geschlossen, P2 überwiegend geschlossen, drei Punkte mit Begründung bewusst zurückgestellt (String-ID-Konvention, weitere Aufteilung der Auth-Fassade, Concurrency-/DAST-Tests). Dient als Nachweisgrundlage für die Freigabeentscheidung.
+- **CI-Release-Gate** `ecosystem-lockstep` (siehe enrol-CHANGELOG).
+- Versions-Gleichschritt `2026082421`.
+
 ## 0.9.43 — 2026-08-25 — Review-P1: asynchrone Batch-Bereitstellung + CI auf development
 - **Batch-Erstellung asynchron:** Batches über 50 Konten werden nicht mehr im Web-Request erzeugt. `batch::create()` legt den Batch sofort im Status `queued` an und übergibt die Bereitstellung an den neuen Ad-hoc-Task `\tool_flexaccess\task\provision_batch`. Kleine Batches (≤ 50) laufen weiterhin synchron.
 - **Sichtbarer Provisioning-Status:** Neue Felder `status` (`queued`/`creating`/`complete`/`failed`) und `requestedcount` auf `tool_flexaccess_batch` (Upgrade `2026082420`, additiv; Bestandsbatches werden als `complete` markiert). Die Kursliste zeigt Status samt Fortschritt („12 von 200"); Zugangsdaten lassen sich erst nach vollständiger Bereitstellung ausstellen.

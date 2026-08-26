@@ -321,14 +321,14 @@ final class batch {
             $message->name = 'batchrequest';
             $message->userfrom = $requester;
             $message->userto = $recipient;
-            $message->subject = get_string('batchrequest:subject', 'tool_flexaccess', $coursename);
-            $message->fullmessage = get_string('batchrequest:body', 'tool_flexaccess', $a);
+            $message->subject = get_string('batchrequestsubject', 'tool_flexaccess', $coursename);
+            $message->fullmessage = get_string('batchrequestbody', 'tool_flexaccess', $a);
             $message->fullmessageformat = FORMAT_PLAIN;
-            $message->fullmessagehtml = text_to_html(get_string('batchrequest:body', 'tool_flexaccess', $a));
-            $message->smallmessage = get_string('batchrequest:small', 'tool_flexaccess', $a);
+            $message->fullmessagehtml = text_to_html(get_string('batchrequestbody', 'tool_flexaccess', $a));
+            $message->smallmessage = get_string('batchrequestsmall', 'tool_flexaccess', $a);
             $message->notification = 1;
             $message->contexturl = $createurl->out(false);
-            $message->contexturlname = get_string('batch:create', 'tool_flexaccess');
+            $message->contexturlname = get_string('batchcreate', 'tool_flexaccess');
             if (message_send($message)) {
                 $notified++;
             }
@@ -547,9 +547,9 @@ final class batch {
      */
     public static function status_label(\stdClass $batch): string {
         $status = (string) ($batch->status ?? self::STATUS_COMPLETE);
-        $label = get_string('batch:status' . $status, 'tool_flexaccess');
+        $label = get_string('batchstatus' . $status, 'tool_flexaccess');
         if ($status === self::STATUS_CREATING || $status === self::STATUS_QUEUED) {
-            $label .= ' (' . get_string('batch:progress', 'tool_flexaccess', (object) [
+            $label .= ' (' . get_string('batchprogress', 'tool_flexaccess', (object) [
                 'done' => (int) $batch->membercount,
                 'total' => (int) ($batch->requestedcount ?: $batch->membercount),
             ]) . ')';

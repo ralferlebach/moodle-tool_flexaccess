@@ -50,8 +50,8 @@ final class invitation_test extends \advanced_testcase {
     private function require_auth_queue(): void {
         // Skip rather than fail when the auth sibling in this CI run predates the immediate-send API
         // (co-installed plugins can be at different versions; version.php pins the real requirement).
-        if (!method_exists('\\auth_flexaccess\\api', 'send_mail_now')) {
-            $this->markTestSkipped('auth_flexaccess is missing or predates api::send_mail_now().');
+        if (!method_exists('\\auth_flexaccess\\api', 'queue_deferred_mail')) {
+            $this->markTestSkipped('auth_flexaccess is missing or predates api::queue_deferred_mail().');
         }
     }
 
@@ -67,6 +67,9 @@ final class invitation_test extends \advanced_testcase {
         $this->require_auth_queue();
         $sink = $this->redirectEmails();
         invitation::send($id);
+        // The mail is queued secret-free; the token is minted by the worker at delivery, so the
+        // queue has to actually run before any token exists.
+        \auth_flexaccess\local\mail_worker::run(time());
         $messages = $sink->get_messages();
         $sink->close();
         $body = $messages ? quoted_printable_decode((string) end($messages)->body) : '';
@@ -115,17 +118,29 @@ final class invitation_test extends \advanced_testcase {
         global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
-        $sink = $this->redirectEmails();
         $id = $this->make('d@example.com');
+
+        // Sending queues a row in the CENTRAL mail queue (so the hourly limit, retry and
+        // monitoring all apply) - but that row must not contain the bearer token.
         invitation::send($id);
+        $this->assertSame(1, $DB->count_records('auth_flexaccess_mailqueue'));
+        $payload = $DB->get_field('auth_flexaccess_mailqueue', 'payloadjson', []);
+        $this->assertStringNotContainsString('token', $payload);
+        $decoded = json_decode($payload, true);
+        $this->assertSame('deferred', $decoded['kind']);
+
+        // The token is minted by the worker at delivery and appears only in the outgoing mail.
+        $sink = $this->redirectEmails();
+        \auth_flexaccess\local\mail_worker::run(time());
         $messages = $sink->get_messages();
         $sink->close();
-        // The mail carried a single-use token...
         preg_match('/token=([0-9a-f]{32})/', quoted_printable_decode((string) end($messages)->body), $m);
         $token = $m[1] ?? '';
         $this->assertNotEmpty($token);
-        // ...but nothing is persisted in the mail queue, and the invitation stores only its hash.
-        $this->assertSame(0, $DB->count_records('auth_flexaccess_mailqueue'));
+
+        // After delivery the queue row still holds no token, and the invitation only its hash.
+        $sent = $DB->get_field('auth_flexaccess_mailqueue', 'payloadjson', []);
+        $this->assertStringNotContainsString($token, $sent);
         $this->assertNotSame($token, (string) invitation::get($id)->tokenhash);
     }
 
@@ -144,13 +159,21 @@ final class invitation_test extends \advanced_testcase {
         // A reminder before any send is refused.
         $this->assertFalse(invitation::remind($id));
 
+        // Queueing alone must NOT claim the invitation was sent: timesent is stamped by the worker
+        // once the mail has really gone out, so an SMTP failure never looks like a success.
         $this->assertTrue(invitation::send($id));
+        $this->assertSame(0, (int) invitation::get($id)->timesent);
+        $this->assertFalse(invitation::remind($id), 'A reminder needs a delivered invitation.');
+
+        \auth_flexaccess\local\mail_worker::run(time());
         $this->assertGreaterThan(0, (int) invitation::get($id)->timesent);
-        // One mail sent to the recipient (never persisted at rest).
         $this->assertCount(1, $sink->get_messages());
 
+        // The reminder follows the same path: queue, then deliver, then count.
         $this->assertTrue(invitation::remind($id));
+        \auth_flexaccess\local\mail_worker::run(time());
         $this->assertSame(1, (int) invitation::get($id)->remindercount);
+        $this->assertGreaterThan(0, (int) invitation::get($id)->timereminded);
         $this->assertCount(2, $sink->get_messages());
         $sink->close();
     }
@@ -185,18 +208,28 @@ final class invitation_test extends \advanced_testcase {
         $now = 10000000;
         $cutoff = $now - 3 * DAYSECS;
 
-        // Sent long ago, pending, not reminded → due.
+        // Delivery stamps timesent/timereminded, so each invitation is queued and then flushed at
+        // the point in time it is meant to have been sent.
+        $deliver = function (int $at) {
+            \auth_flexaccess\local\mail_worker::run($at);
+        };
+
+        // Sent long ago, pending, not reminded -> due.
         $due = $this->make('due@example.com', 0, $now);
         invitation::send($due, $now - 5 * DAYSECS);
+        $deliver($now - 5 * DAYSECS);
 
-        // Sent recently → not due.
+        // Sent recently -> not due.
         $recent = $this->make('recent@example.com', 0, $now);
         invitation::send($recent, $now - HOURSECS);
+        $deliver($now - HOURSECS);
 
-        // Sent long ago but already reminded → not due.
+        // Sent long ago but already reminded -> not due.
         $reminded = $this->make('reminded@example.com', 0, $now);
         invitation::send($reminded, $now - 5 * DAYSECS);
+        $deliver($now - 5 * DAYSECS);
         invitation::remind($reminded, $now - 4 * DAYSECS);
+        $deliver($now - 4 * DAYSECS);
 
         $ids = invitation::due_reminders($cutoff, $now);
         $this->assertContains($due, $ids);

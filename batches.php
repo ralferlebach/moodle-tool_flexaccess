@@ -65,13 +65,13 @@ if ($action === 'new') {
         $queued = ($result['status'] ?? '') === batch::STATUS_QUEUED;
         redirect(
             new moodle_url($returnurl, ['action' => 'view', 'id' => $result['batchid']]),
-            get_string($queued ? 'batch:createdqueued' : 'batch:created', 'tool_flexaccess', $data->count),
+            get_string($queued ? 'batchcreatedqueued' : 'batchcreated', 'tool_flexaccess', $data->count),
             null,
             \core\output\notification::NOTIFY_SUCCESS
         );
     }
     echo $OUTPUT->header();
-    echo $OUTPUT->heading(get_string('batch:create', 'tool_flexaccess'));
+    echo $OUTPUT->heading(get_string('batchcreate', 'tool_flexaccess'));
     echo html_writer::tag('p', get_string('batches_intro', 'tool_flexaccess'));
     $form->display();
     echo $OUTPUT->footer();
@@ -86,35 +86,35 @@ if ($action === 'view' && $id > 0) {
     $course = $DB->get_record('course', ['id' => $batch->courseid], 'id, fullname', IGNORE_MISSING);
     echo $OUTPUT->header();
     echo $OUTPUT->heading(format_string($batch->name));
-    echo html_writer::tag('p', get_string('batch:summary', 'tool_flexaccess', (object) [
+    echo html_writer::tag('p', get_string('batchsummary', 'tool_flexaccess', (object) [
         'count' => $batch->membercount,
         'course' => $course ? format_string($course->fullname) : ('#' . $batch->courseid),
-        'type' => get_string($batch->permanent ? 'batch:type_permanent' : 'batch:type_temporary', 'tool_flexaccess'),
+        'type' => get_string($batch->permanent ? 'batchtype_permanent' : 'batchtype_temporary', 'tool_flexaccess'),
     ]));
-    echo $OUTPUT->notification(get_string('batch:downloadnote', 'tool_flexaccess'), 'info');
+    echo $OUTPUT->notification(get_string('batchdownloadnote', 'tool_flexaccess'), 'info');
 
     $dl = new moodle_url('/admin/tool/flexaccess/batchdownload.php', ['id' => $id, 'sesskey' => sesskey()]);
     echo html_writer::start_div('mb-3');
     echo $OUTPUT->single_button(
         new moodle_url($dl, ['format' => 'all']),
-        get_string('batch:downloadall', 'tool_flexaccess'),
+        get_string('batchdownloadall', 'tool_flexaccess'),
         'get'
     );
     echo html_writer::end_div();
     echo html_writer::div(
-        html_writer::link(new moodle_url($dl, ['format' => 'excel']), get_string('batch:downloadexcel', 'tool_flexaccess'))
+        html_writer::link(new moodle_url($dl, ['format' => 'excel']), get_string('batchdownloadexcel', 'tool_flexaccess'))
         . ' · ' .
-        html_writer::link(new moodle_url($dl, ['format' => 'pdflist']), get_string('batch:downloadpdflist', 'tool_flexaccess'))
+        html_writer::link(new moodle_url($dl, ['format' => 'pdflist']), get_string('batchdownloadpdflist', 'tool_flexaccess'))
         . ' · ' .
-        html_writer::link(new moodle_url($dl, ['format' => 'cards']), get_string('batch:downloadcards', 'tool_flexaccess'))
+        html_writer::link(new moodle_url($dl, ['format' => 'cards']), get_string('batchdownloadcards', 'tool_flexaccess'))
     );
     echo html_writer::tag('p', html_writer::link($returnurl, get_string('back')), ['class' => 'mt-3']);
 
-    echo $OUTPUT->heading(get_string('batch:convert', 'tool_flexaccess'), 4);
-    echo html_writer::tag('p', get_string('batch:convert_intro', 'tool_flexaccess'));
+    echo $OUTPUT->heading(get_string('batchconvert', 'tool_flexaccess'), 4);
+    echo html_writer::tag('p', get_string('batchconvert_intro', 'tool_flexaccess'));
     echo $OUTPUT->single_button(
         new moodle_url('/admin/tool/flexaccess/batchconvert.php', ['id' => $id]),
-        get_string('batch:convert', 'tool_flexaccess'),
+        get_string('batchconvert', 'tool_flexaccess'),
         'get'
     );
     echo $OUTPUT->footer();
@@ -126,7 +126,7 @@ echo $OUTPUT->heading(get_string('batches', 'tool_flexaccess'));
 echo html_writer::tag('p', get_string('batches_intro', 'tool_flexaccess'));
 echo $OUTPUT->single_button(
     new moodle_url($returnurl, ['action' => 'new']),
-    get_string('batch:create', 'tool_flexaccess'),
+    get_string('batchcreate', 'tool_flexaccess'),
     'get'
 );
 
@@ -137,10 +137,10 @@ if ($batches) {
     $courses = $courseids ? $DB->get_records_list('course', 'id', $courseids, '', 'id, fullname') : [];
     $table = new html_table();
     $table->head = [
-        get_string('batch:name', 'tool_flexaccess'),
-        get_string('batch:course', 'tool_flexaccess'),
-        get_string('batch:accounttype', 'tool_flexaccess'),
-        get_string('batch:count', 'tool_flexaccess'),
+        get_string('batchname', 'tool_flexaccess'),
+        get_string('batchcourse', 'tool_flexaccess'),
+        get_string('batchaccounttype', 'tool_flexaccess'),
+        get_string('batchcount', 'tool_flexaccess'),
         '',
     ];
     foreach ($batches as $b) {
@@ -150,14 +150,14 @@ if ($batches) {
                 ? html_writer::link(
                     new moodle_url('/admin/tool/flexaccess/coursebatches.php', ['courseid' => $b->courseid]),
                     format_string($courses[$b->courseid]->fullname),
-                    ['title' => get_string('batch:openincourse', 'tool_flexaccess')]
+                    ['title' => get_string('batchopenincourse', 'tool_flexaccess')]
                 )
                 : ('#' . $b->courseid),
-            get_string($b->permanent ? 'batch:type_permanent' : 'batch:type_temporary', 'tool_flexaccess'),
+            get_string($b->permanent ? 'batchtype_permanent' : 'batchtype_temporary', 'tool_flexaccess'),
             $b->membercount,
             html_writer::link(
                 new moodle_url($returnurl, ['action' => 'view', 'id' => $b->id]),
-                get_string('batch:downloadopen', 'tool_flexaccess')
+                get_string('batchdownloadopen', 'tool_flexaccess')
             ),
         ];
     }

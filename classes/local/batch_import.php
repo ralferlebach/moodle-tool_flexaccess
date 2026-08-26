@@ -60,10 +60,10 @@ final class batch_import {
      */
     public static function rules(): array {
         return [
-            self::RULE_EMAIL => get_string('batch:rule_email', 'tool_flexaccess'),
-            self::RULE_KEEP => get_string('batch:rule_keep', 'tool_flexaccess'),
-            self::RULE_EMAILLOCAL => get_string('batch:rule_emaillocal', 'tool_flexaccess'),
-            self::RULE_FIRSTLAST => get_string('batch:rule_firstlast', 'tool_flexaccess'),
+            self::RULE_EMAIL => get_string('batchrule_email', 'tool_flexaccess'),
+            self::RULE_KEEP => get_string('batchrule_keep', 'tool_flexaccess'),
+            self::RULE_EMAILLOCAL => get_string('batchrule_emaillocal', 'tool_flexaccess'),
+            self::RULE_FIRSTLAST => get_string('batchrule_firstlast', 'tool_flexaccess'),
         ];
     }
 
@@ -82,7 +82,7 @@ final class batch_import {
      */
     public static function parse(string $filepath): array {
         if (!is_readable($filepath) || filesize($filepath) > self::MAX_IMPORT_BYTES) {
-            throw new \moodle_exception('batch:importtoolarge', 'tool_flexaccess');
+            throw new \moodle_exception('batchimporttoolarge', 'tool_flexaccess');
         }
         $reader = IOFactory::createReader('Xlsx');
         $reader->setReadDataOnly(true);
@@ -143,13 +143,13 @@ final class batch_import {
             $member = $DB->get_record(self::MEMBER_TABLE, ['batchid' => $batchid, 'username' => $username]);
             if (!$member) {
                 $skipped++;
-                $errors[] = get_string('batch:err_notfound', 'tool_flexaccess', $username);
+                $errors[] = get_string('batcherr_notfound', 'tool_flexaccess', $username);
                 continue;
             }
             $email = trim($row['email']);
             if ($email === '') {
                 $skipped++;
-                $errors[] = get_string('batch:err_noemail', 'tool_flexaccess', $username);
+                $errors[] = get_string('batcherr_noemail', 'tool_flexaccess', $username);
                 continue;
             }
             $userid = (int) $member->userid;
@@ -160,7 +160,7 @@ final class batch_import {
             if ($status !== 'converted') {
                 $skipped++;
                 $errors[] = get_string(
-                    'batch:err_convert',
+                    'batcherr_convert',
                     'tool_flexaccess',
                     (object) ['username' => $username, 'status' => $status]
                 );
@@ -174,7 +174,7 @@ final class batch_import {
                 } else {
                     // Conversion succeeded; only the rename failed (username taken/invalid).
                     $errors[] = get_string(
-                        'batch:err_rename',
+                        'batcherr_rename',
                         'tool_flexaccess',
                         (object) ['username' => $username, 'target' => $target]
                     );

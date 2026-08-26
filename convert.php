@@ -78,7 +78,7 @@ if ($data = $form->get_data()) {
     }
     redirect(
         $pageurl,
-        get_string('convertstatus:' . $status, 'tool_flexaccess'),
+        get_string('convertstatus' . $status, 'tool_flexaccess'),
         null,
         \core\output\notification::NOTIFY_ERROR
     );

@@ -34,7 +34,8 @@ require_login();
 
 $id = required_param('id', PARAM_INT);
 $format = optional_param('format', 'all', PARAM_ALPHA);
-$confirm = optional_param('confirm', 0, PARAM_BOOL);
+// Only a POST may rotate credentials; a GET renders the confirmation instead.
+$confirm = (optional_param('confirm', 0, PARAM_BOOL) && $_SERVER['REQUEST_METHOD'] === 'POST');
 
 $batch = batch::get($id);
 if (!$batch) {
@@ -48,7 +49,7 @@ batch::require_issue($courseid);
 
 // A batch that is still being provisioned has no complete member set to issue credentials for.
 if (($batch->status ?? batch::STATUS_COMPLETE) !== batch::STATUS_COMPLETE) {
-    throw new moodle_exception('batch:notreadyyet', 'tool_flexaccess');
+    throw new moodle_exception('batchnotreadyyet', 'tool_flexaccess');
 }
 
 $downloadurl = new moodle_url('/admin/tool/flexaccess/batchdownload.php', ['id' => $id, 'format' => $format]);
@@ -58,12 +59,20 @@ if (!$confirm) {
     $PAGE->set_context($context);
     $PAGE->set_url($downloadurl);
     $PAGE->set_pagelayout('admin');
-    $PAGE->set_title(get_string('batch:issuecredentials', 'tool_flexaccess'));
+    $PAGE->set_title(get_string('batchissuecredentials', 'tool_flexaccess'));
     $PAGE->set_heading(format_string($batch->name));
     echo $OUTPUT->header();
+    // Issuing rotates passwords, so it must be a POST: a state-changing GET can be triggered by a
+    // prefetch, a crawler or a pasted link and would silently invalidate handed-out credentials.
+    // single_button renders the URL parameters as hidden fields and adds the sesskey itself.
+    $continue = new single_button(
+        new moodle_url($downloadurl, ['confirm' => 1]),
+        get_string('continue'),
+        'post'
+    );
     echo $OUTPUT->confirm(
-        get_string('batch:issueconfirm', 'tool_flexaccess'),
-        new moodle_url($downloadurl, ['confirm' => 1, 'sesskey' => sesskey()]),
+        get_string('batchissueconfirm', 'tool_flexaccess'),
+        $continue,
         new moodle_url('/admin/tool/flexaccess/batches.php', ['action' => 'view', 'id' => $id])
     );
     echo $OUTPUT->footer();

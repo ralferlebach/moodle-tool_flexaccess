@@ -48,7 +48,7 @@ if (in_array($action, ['send', 'remind', 'revoke'], true) && $id > 0 && confirm_
         invitation::send($id);
         redirect(
             $returnurl,
-            get_string('invite:sent', 'tool_flexaccess'),
+            get_string('invitesent', 'tool_flexaccess'),
             null,
             \core\output\notification::NOTIFY_SUCCESS
         );
@@ -56,7 +56,7 @@ if (in_array($action, ['send', 'remind', 'revoke'], true) && $id > 0 && confirm_
         $done = invitation::remind($id);
         redirect(
             $returnurl,
-            get_string($done ? 'invite:reminded' : 'invite:remindfailed', 'tool_flexaccess'),
+            get_string($done ? 'invitereminded' : 'inviteremindfailed', 'tool_flexaccess'),
             null,
             $done ? \core\output\notification::NOTIFY_SUCCESS : \core\output\notification::NOTIFY_WARNING
         );
@@ -64,7 +64,7 @@ if (in_array($action, ['send', 'remind', 'revoke'], true) && $id > 0 && confirm_
         $revoked = invitation::revoke($id);
         redirect(
             $returnurl,
-            get_string($revoked ? 'invite:revoked' : 'invite:revokefailed', 'tool_flexaccess'),
+            get_string($revoked ? 'inviterevoked' : 'inviterevokefailed', 'tool_flexaccess'),
             null,
             $revoked ? \core\output\notification::NOTIFY_SUCCESS : \core\output\notification::NOTIFY_WARNING
         );
@@ -98,13 +98,13 @@ if ($action === 'new') {
         }
         redirect(
             $returnurl,
-            get_string('invite:created', 'tool_flexaccess', $created),
+            get_string('invitecreated', 'tool_flexaccess', $created),
             null,
             \core\output\notification::NOTIFY_SUCCESS
         );
     }
     echo $OUTPUT->header();
-    echo $OUTPUT->heading(get_string('invite:create', 'tool_flexaccess'));
+    echo $OUTPUT->heading(get_string('invitecreate', 'tool_flexaccess'));
     $form->display();
     echo $OUTPUT->footer();
     die;
@@ -115,7 +115,7 @@ echo $OUTPUT->heading(get_string('invitations', 'tool_flexaccess'));
 echo html_writer::tag('p', get_string('invitations_intro', 'tool_flexaccess'));
 echo $OUTPUT->single_button(
     new moodle_url($returnurl, ['action' => 'new']),
-    get_string('invite:create', 'tool_flexaccess'),
+    get_string('invitecreate', 'tool_flexaccess'),
     'get'
 );
 
@@ -128,25 +128,25 @@ if ($invites) {
         ? $DB->get_records_list('course', 'id', $courseids, '', 'id, fullname')
         : [];
     $statuslabels = [
-        invitation::STATUS_PENDING => get_string('invite:status_pending', 'tool_flexaccess'),
-        invitation::STATUS_ACCEPTED => get_string('invite:status_accepted', 'tool_flexaccess'),
-        invitation::STATUS_REVOKED => get_string('invite:status_revoked', 'tool_flexaccess'),
-        invitation::STATUS_RESERVED => get_string('invite:status_reserved', 'tool_flexaccess'),
+        invitation::STATUS_PENDING => get_string('invitestatus_pending', 'tool_flexaccess'),
+        invitation::STATUS_ACCEPTED => get_string('invitestatus_accepted', 'tool_flexaccess'),
+        invitation::STATUS_REVOKED => get_string('invitestatus_revoked', 'tool_flexaccess'),
+        invitation::STATUS_RESERVED => get_string('invitestatus_reserved', 'tool_flexaccess'),
     ];
     $table = new html_table();
     $table->head = [
-        get_string('invite:recipient', 'tool_flexaccess'),
-        get_string('invite:course', 'tool_flexaccess'),
-        get_string('invite:statuscol', 'tool_flexaccess'),
-        get_string('invite:sentcol', 'tool_flexaccess'),
-        get_string('invite:actions', 'tool_flexaccess'),
+        get_string('inviterecipient', 'tool_flexaccess'),
+        get_string('invitecourse', 'tool_flexaccess'),
+        get_string('invitestatuscol', 'tool_flexaccess'),
+        get_string('invitesentcol', 'tool_flexaccess'),
+        get_string('inviteactions', 'tool_flexaccess'),
     ];
     foreach ($invites as $invite) {
         $actions = [];
         if ($invite->status === invitation::STATUS_PENDING) {
             $label = (int) $invite->timesent === 0
-                ? get_string('invite:send', 'tool_flexaccess')
-                : get_string('invite:resend', 'tool_flexaccess');
+                ? get_string('invitesend', 'tool_flexaccess')
+                : get_string('inviteresend', 'tool_flexaccess');
             $actions[] = html_writer::link(
                 new moodle_url($returnurl, ['action' => 'send', 'id' => $invite->id, 'sesskey' => sesskey()]),
                 $label
@@ -154,12 +154,12 @@ if ($invites) {
             if ((int) $invite->timesent > 0) {
                 $actions[] = html_writer::link(
                     new moodle_url($returnurl, ['action' => 'remind', 'id' => $invite->id, 'sesskey' => sesskey()]),
-                    get_string('invite:remind', 'tool_flexaccess')
+                    get_string('inviteremind', 'tool_flexaccess')
                 );
             }
             $actions[] = html_writer::link(
                 new moodle_url($returnurl, ['action' => 'revoke', 'id' => $invite->id, 'sesskey' => sesskey()]),
-                get_string('invite:revoke', 'tool_flexaccess')
+                get_string('inviterevoke', 'tool_flexaccess')
             );
         }
         $sent = (int) $invite->timesent > 0 ? userdate((int) $invite->timesent) : '-';
