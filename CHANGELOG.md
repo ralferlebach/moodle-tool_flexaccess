@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.48 — 2026-08-26 — Review 0.9.44: P1-7, P1-8, P1-9 + Scope-Entscheidungen
+- **P1-9 Campaign-Token nicht mehr im Klartext gespeichert.** Der Token ist ein Bearer-Secret: Wer ihn hat, kann die Kampagne einlösen. Gespeichert wird jetzt nur noch `tokenhash` (SHA-256); die Klartextspalte wird beim Upgrade migriert und **gelöscht** (Savepoint `2026082425`, inkl. Umstellung des Unique-Index). Bestehende Links funktionieren weiter. Der Link wird genau **einmal** bei Erstellung angezeigt und lässt sich nicht wiederherstellen, nur rotieren; die Rotation entwertet den bisherigen Link sofort. Test `test_rotate_invalidates_the_previous_link`.
+- **P1-7 Alle übrigen state-changing Aktionen laufen über POST:** Invitation Send/Remind/Revoke, Campaign Delete (mit Bestätigung), Campaign-Link-Rotation (mit Bestätigung) und Policy Delete. Aktionen werden als POST-Buttons statt als Links gerendert; serverseitig wird zusätzlich `REQUEST_METHOD === 'POST'` geprüft. Keine Datei mit `confirm_sesskey()` bleibt ohne POST-Guard.
+- **Scope-Entscheidungen dokumentiert** (`docs/scope-decisions-1.0.md`): Die ursprüngliche Anforderung „temporäre Nutzer für andere ausblenden" wird aus dem 1.0-Scope genommen (kein stabiler Moodle-Erweiterungspunkt, kein Core-Hack); Restriktionen sind für 1.0 nur im Kurs-Scope administrierbar, die Engine wertet System- und Kategorieregeln weiterhin aus.
+- `docs/review-0.9.35-status.md` um den vollständigen Stand der 0.9.44-DoD ergänzt.
+- Versions-Gleichschritt `2026082425`.
+
 ## 0.9.47 — 2026-08-26 — Review 0.9.44: P1-1, P1-2, P1-4 + Artefakt-Release-Gate
 - **P1-1 Fehlgeschlagene Bereitstellung erreicht jetzt zuverlässig `FAILED`.** Der bisherige Code setzte den Status nach `$transaction->rollback($e)` — Moodle wirft dort erneut, die Zeile war unerreichbar, ein gescheiterter Batch blieb dauerhaft auf `CREATING`. Die große Transaktion ist ersatzlos entfallen: Jede Mitgliedszeile wird erst geschrieben, nachdem Konto **und** Einschreibung erfolgreich waren, sodass ein Abbruch einen kleineren, aber konsistenten Batch hinterlässt. Der Fehlerzustand wird garantiert persistiert, samt Grund im neuen Feld `statusmessage` (Upgrade `2026082424`, additiv).
 - **P1-1 Retry ist idempotent:** `provision_members()` erzeugt nur noch die *fehlenden* Konten (Differenz aus Sollzahl und vorhandenen Mitgliedern). Ein von Moodle wiederholter Ad-hoc-Task setzt damit fort, statt Konten und Einschreibungen zu duplizieren.

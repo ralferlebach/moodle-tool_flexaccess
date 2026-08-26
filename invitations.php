@@ -43,7 +43,11 @@ $PAGE->set_heading(get_string('pluginname', 'tool_flexaccess'));
 
 $returnurl = new moodle_url('/admin/tool/flexaccess/invitations.php');
 
-if (in_array($action, ['send', 'remind', 'revoke'], true) && $id > 0 && confirm_sesskey()) {
+// Sending, reminding and revoking all change state (mails go out, tokens are rotated or killed),
+// so they must be POSTed - a GET can be triggered by a prefetch, a crawler or a shared link.
+$ispost = ($_SERVER['REQUEST_METHOD'] === 'POST');
+
+if (in_array($action, ['send', 'remind', 'revoke'], true) && $id > 0 && $ispost && confirm_sesskey()) {
     if ($action === 'send') {
         invitation::send($id);
         redirect(
@@ -147,20 +151,24 @@ if ($invites) {
             $label = (int) $invite->timesent === 0
                 ? get_string('invitesend', 'tool_flexaccess')
                 : get_string('inviteresend', 'tool_flexaccess');
-            $actions[] = html_writer::link(
-                new moodle_url($returnurl, ['action' => 'send', 'id' => $invite->id, 'sesskey' => sesskey()]),
-                $label
-            );
+            // State-changing actions are rendered as POST buttons, never as links.
+            $actions[] = $OUTPUT->render(new single_button(
+                new moodle_url($returnurl, ['action' => 'send', 'id' => $invite->id]),
+                $label,
+                'post'
+            ));
             if ((int) $invite->timesent > 0) {
-                $actions[] = html_writer::link(
-                    new moodle_url($returnurl, ['action' => 'remind', 'id' => $invite->id, 'sesskey' => sesskey()]),
-                    get_string('inviteremind', 'tool_flexaccess')
-                );
+                $actions[] = $OUTPUT->render(new single_button(
+                    new moodle_url($returnurl, ['action' => 'remind', 'id' => $invite->id]),
+                    get_string('inviteremind', 'tool_flexaccess'),
+                    'post'
+                ));
             }
-            $actions[] = html_writer::link(
-                new moodle_url($returnurl, ['action' => 'revoke', 'id' => $invite->id, 'sesskey' => sesskey()]),
-                get_string('inviterevoke', 'tool_flexaccess')
-            );
+            $actions[] = $OUTPUT->render(new single_button(
+                new moodle_url($returnurl, ['action' => 'revoke', 'id' => $invite->id]),
+                get_string('inviterevoke', 'tool_flexaccess'),
+                'post'
+            ));
         }
         $sent = (int) $invite->timesent > 0 ? userdate((int) $invite->timesent) : '-';
         $table->data[] = [

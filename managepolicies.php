@@ -58,7 +58,13 @@ if ($existing = ($categoryid > 0 ? \enrol_flexaccess\local\category_policy::load
 
 if ($form->is_cancelled()) {
     redirect($returnurl);
-} else if (optional_param('delete', 0, PARAM_INT) === 1 && $categoryid > 0 && confirm_sesskey()) {
+} else if (
+    optional_param('delete', 0, PARAM_INT) === 1
+        && $categoryid > 0
+        // Deleting a category policy changes access for every course beneath it: POST only.
+        && $_SERVER['REQUEST_METHOD'] === 'POST'
+        && confirm_sesskey()
+) {
     \enrol_flexaccess\local\category_policy::delete($categoryid);
     redirect($returnurl, get_string('policydeleted', 'tool_flexaccess'), null, \core\output\notification::NOTIFY_SUCCESS);
 } else if ($data = $form->get_data()) {
@@ -101,10 +107,10 @@ if ($overrides) {
     foreach ($overrides as $catid => $row) {
         $name = $categories[$catid] ?? ('#' . $catid);
         $editurl = new moodle_url($returnurl, ['categoryid' => $catid]);
-        $deleteurl = new moodle_url($returnurl, ['categoryid' => $catid, 'delete' => 1, 'sesskey' => sesskey()]);
+        $deleteurl = new moodle_url($returnurl, ['categoryid' => $catid, 'delete' => 1]);
         $actions = html_writer::link($editurl, get_string('edit'))
             . ' · '
-            . html_writer::link($deleteurl, get_string('delete'));
+            . $OUTPUT->render(new single_button($deleteurl, get_string('delete'), 'post'));
         $table->data[] = [
             format_string($name),
             $flagword((int) $row->allowtemporary),

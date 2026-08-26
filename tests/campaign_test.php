@@ -36,7 +36,7 @@ final class campaign_test extends \advanced_testcase {
      */
     private function make(array $overrides = []): int {
         $course = $this->getDataGenerator()->create_course();
-        return campaign::create($overrides + [
+        $created = campaign::create($overrides + [
             'name' => 'Spring intake',
             'courseid' => (int) $course->id,
             'enabled' => 1,
@@ -45,7 +45,13 @@ final class campaign_test extends \advanced_testcase {
             'maxredemptions' => 0,
             'gatemode' => 'none',
         ]);
+        // The plaintext token is returned once and never stored; keep it for the assertions.
+        $this->lasttoken = $created['token'];
+        return $created['id'];
     }
+
+    /** @var string Plaintext token of the campaign most recently created by make(). */
+    private string $lasttoken = '';
 
     /**
      * Create/get/token round-trips, and update preserves token and redemption count.
@@ -59,8 +65,10 @@ final class campaign_test extends \advanced_testcase {
         $campaign = campaign::get($id);
         $this->assertNotNull($campaign);
         $this->assertSame('Cohort A', $campaign->name);
-        $this->assertNotEmpty($campaign->token);
-        $this->assertSame($campaign->id, campaign::get_by_token($campaign->token)->id);
+        // The database holds only the hash; the plaintext token still resolves to the campaign.
+        $this->assertNotEmpty($campaign->tokenhash);
+        $this->assertNotSame($this->lasttoken, $campaign->tokenhash);
+        $this->assertSame($campaign->id, campaign::get_by_token($this->lasttoken)->id);
 
         campaign::redeem($id);
         campaign::update($id, [
@@ -69,7 +77,7 @@ final class campaign_test extends \advanced_testcase {
         ]);
         $updated = campaign::get($id);
         $this->assertSame('Cohort A renamed', $updated->name);
-        $this->assertSame($campaign->token, $updated->token);
+        $this->assertSame($campaign->tokenhash, $updated->tokenhash);
         $this->assertSame(1, (int) $updated->redemptioncount);
     }
 
@@ -167,5 +175,20 @@ final class campaign_test extends \advanced_testcase {
         $this->assertCount(2, campaign::all(0, 2));
         $this->assertCount(2, campaign::all(2, 2));
         $this->assertCount(1, campaign::all(4, 2));
+    }
+
+    public function test_rotate_invalidates_the_previous_link(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $id = $this->make();
+        $old = $this->lasttoken;
+        $this->assertSame($id, (int) campaign::get_by_token($old)->id);
+
+        $new = campaign::rotate_token($id);
+
+        $this->assertNotSame($old, $new);
+        // The old link stops working immediately; the new one resolves.
+        $this->assertNull(campaign::get_by_token($old));
+        $this->assertSame($id, (int) campaign::get_by_token($new)->id);
     }
 }

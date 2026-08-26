@@ -214,5 +214,39 @@ function xmldb_tool_flexaccess_upgrade($oldversion) {
         }
         upgrade_plugin_savepoint(true, 2026082424, 'tool', 'flexaccess');
     }
+    if ($oldversion < 2026082425) {
+        $dbman = $DB->get_manager();
+        $table = new xmldb_table('tool_flexaccess_campaign');
+        // P1-9: the campaign token is a bearer secret and must not sit in the database in clear.
+        $field = new xmldb_field('tokenhash', XMLDB_TYPE_CHAR, '64', null, XMLDB_NOTNULL, null, '', 'courseid');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        // Drop the old unique index before removing its column, then index the hash instead.
+        $oldindex = new xmldb_index('token_uix', XMLDB_INDEX_UNIQUE, ['token']);
+        if ($dbman->index_exists($table, $oldindex)) {
+            $dbman->drop_index($table, $oldindex);
+        }
+        // Migrate existing links so they keep working, then destroy the plaintext.
+        $old = new xmldb_field('token', XMLDB_TYPE_CHAR, '40', null, XMLDB_NOTNULL, null, null);
+        if ($dbman->field_exists($table, $old)) {
+            $rs = $DB->get_recordset_select('tool_flexaccess_campaign', "token <> ''", null, '', 'id, token');
+            foreach ($rs as $record) {
+                $DB->set_field(
+                    'tool_flexaccess_campaign',
+                    'tokenhash',
+                    hash('sha256', (string) $record->token),
+                    ['id' => $record->id]
+                );
+            }
+            $rs->close();
+            $dbman->drop_field($table, $old);
+        }
+        $newindex = new xmldb_index('tokenhash_uix', XMLDB_INDEX_UNIQUE, ['tokenhash']);
+        if (!$dbman->index_exists($table, $newindex)) {
+            $dbman->add_index($table, $newindex);
+        }
+        upgrade_plugin_savepoint(true, 2026082425, 'tool', 'flexaccess');
+    }
     return true;
 }
