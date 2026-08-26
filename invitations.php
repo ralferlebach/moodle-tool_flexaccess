@@ -61,12 +61,12 @@ if (in_array($action, ['send', 'remind', 'revoke'], true) && $id > 0 && confirm_
             $done ? \core\output\notification::NOTIFY_SUCCESS : \core\output\notification::NOTIFY_WARNING
         );
     } else {
-        invitation::revoke($id);
+        $revoked = invitation::revoke($id);
         redirect(
             $returnurl,
-            get_string('invite:revoked', 'tool_flexaccess'),
+            get_string($revoked ? 'invite:revoked' : 'invite:revokefailed', 'tool_flexaccess'),
             null,
-            \core\output\notification::NOTIFY_SUCCESS
+            $revoked ? \core\output\notification::NOTIFY_SUCCESS : \core\output\notification::NOTIFY_WARNING
         );
     }
 }
@@ -83,11 +83,13 @@ if ($action === 'new') {
         $expiry = (int) ($data->expiry ?? 0);
         $timeexpires = $expiry > 0 ? $now + $expiry : 0;
         $created = 0;
+        $seen = [];
         foreach (preg_split('/[\s,;]+/', (string) $data->emails, -1, PREG_SPLIT_NO_EMPTY) as $email) {
-            $email = trim($email);
-            if (!validate_email($email)) {
+            $email = \core_text::strtolower(trim($email));
+            if (!validate_email($email) || isset($seen[$email])) {
                 continue;
             }
+            $seen[$email] = true;
             $inviteid = invitation::create((int) $data->courseid, $email, $timeexpires, null, $now);
             if (!empty($data->sendnow)) {
                 invitation::send($inviteid, $now);

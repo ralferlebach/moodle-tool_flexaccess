@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.9.42 — 2026-08-25 — CI-Fix: Skew-Robustheit gegenüber älteren Geschwister-Plugins
+- **PHPUnit-Fails im CI behoben (Ursache: Sibling-Skew).** Der tool-Job lief mit dem neuen tool-Code, zog aber ein älteres `auth_flexaccess`. Folge: 6 Errors `Call to undefined method auth_flexaccess\api::send_mail_now()` und 1 Failure im Härtungstest.
+  - `invitation::queue_mail()` prüft jetzt `method_exists(...,'send_mail_now')` statt nur `class_exists()` — die Klasse existierte ja, nur die Methode fehlte. Bei fehlender API wird **nicht** auf die persistente Queue ausgewichen (das würde den Token at rest speichern, P0-2), sondern `false` zurückgegeben; der Aufrufer meldet den Fehlschlag ehrlich.
+  - `invitation_test` überspringt die betroffenen Tests mit klarer Begründung statt zu scheitern.
+  - `batch_credential_lifecycle_test` überspringt den Härtungstest, wenn das installierte `auth_flexaccess` älter als `2026082415` ist (die Härtung lebt dort).
+- Versions-Gleichschritt `2026082419`.
+
+## 0.9.41 — 2026-08-25 — Review-P1/P2: Test-Gates, Pagination, Rechte-Feinschliff
+- **Kurs-Batchliste:** Ansicht hängt jetzt an `viewcoursebatches` (bisher nur bei Erstellrecht sichtbar) und ist **paginiert** (50 pro Seite, `paging_bar`) — vorher unbegrenzt.
+- **Playwright-Workflow** installiert alle vier Geschwister-Plugins und nutzt `npm ci` (siehe unten).
+- Versions-Gleichschritt `2026082418`.
+
+## 0.9.40 — 2026-08-25 — Review-P1: Batch-Reliability/-Rechte, Invitation-UX
+- **Credential-Ausgabe vom Download getrennt:** Das Ausstellen von Batch-Zugangsdaten rotiert Passwörter und ist jetzt eine explizite, **bestätigte** Aktion (Confirm-Seite, POST + sesskey) statt stiller Nebeneffekt eines Downloads. Konvertierte/personalisierte Konten bleiben unberührt (P0-1).
+- **Granulare Batch-Capabilities:** Neue kurskontext-Capabilities `viewcoursebatches`, `createcoursebatches`, `issuebatchcredentials`, `convertbatchaccounts`. Verdrahtet an Anlegen (coursebatches), Ausstellen (batchdownload) und Umwandeln (batchconvert). Rückwärtskompatibel: `managebatches` (System) und das bisherige `managecoursebatches` gewähren weiterhin alle Rechte.
+- **Batch-Erstellung failure-safe:** `batch::create()` läuft in einer Transaktion — ein Fehler mittendrin rollt den gesamten Batch zurück (kein Teil-Batch). Obergrenze als `MAX_SYNC_CREATE` benannt.
+- **Invitation `revoke()`** liefert jetzt `bool`; die UI meldet Erfolg nur, wenn tatsächlich widerrufen wurde (kein irreführendes „widerrufen" bei bereits angenommenen/reservierten Einladungen).
+- **Mehrfach-E-Mail-Eingabe:** Ungültige Adressen werden gemeldet statt still verworfen; Duplikate werden dedupliziert.
+- Versions-Gleichschritt `2026082417`.
+
 ## 0.9.39 — 2026-08-25 — Versions-Gleichschritt (enrol: Zugangsschlüssel-Fix)
 - Keine Codeänderung. Versions-Gleichschritt auf `2026082416`.
 

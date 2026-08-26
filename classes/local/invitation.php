@@ -232,15 +232,21 @@ final class invitation {
     /**
      * Revoke an invitation so its token can no longer be accepted.
      *
+     * Only a PENDING invitation can be revoked. A RESERVED one is mid-acceptance and an ACCEPTED /
+     * already-REVOKED one has nothing to revoke, so the caller is told (false) rather than shown a
+     * misleading success.
+     *
      * @param int $id Invitation id.
-     * @return void
+     * @return bool Whether the invitation was revoked.
      */
-    public static function revoke(int $id): void {
+    public static function revoke(int $id): bool {
         global $DB;
         $invite = self::get($id);
         if ($invite && $invite->status === self::STATUS_PENDING) {
             $DB->set_field(self::TABLE, 'status', self::STATUS_REVOKED, ['id' => $id]);
+            return true;
         }
+        return false;
     }
 
     /**
@@ -377,8 +383,11 @@ final class invitation {
         string $bodykey,
         int $now
     ): bool {
-        if (!class_exists('\auth_flexaccess\api')) {
-            // The auth plugin (a declared dependency) is not available; nothing can be sent.
+        if (!method_exists('\auth_flexaccess\api', 'send_mail_now')) {
+            // The auth plugin (a declared dependency, pinned by version) is either missing or older
+            // than the immediate-send API. Sending via the persistent queue is not an option here:
+            // it would store the single-use token at rest (P0-2). So nothing is sent, and the caller
+            // reports the failure rather than recording a send that never happened.
             return false;
         }
         // P0-2: the single-use token is rendered into the link and sent immediately. It is never

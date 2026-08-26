@@ -36,6 +36,9 @@ final class batch {
     /** Batch member table. */
     private const MEMBER_TABLE = 'tool_flexaccess_batch_member';
 
+    /** Hard upper bound on accounts provisioned in a single synchronous request. */
+    private const MAX_SYNC_CREATE = 1000;
+
     /** Unambiguous alphabet for usernames/passwords (no 0/O/1/l/I). */
     private const ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
 
@@ -118,6 +121,102 @@ final class batch {
                 ''
             );
         }
+    }
+
+    /**
+     * Whether the current user holds a granular batch capability for the course.
+     *
+     * Backward compatible: site managers (managebatches) and holders of the legacy coarse course
+     * capability (managecoursebatches) keep all granular rights; the granular capability grants only
+     * its specific action, for finer role setups.
+     *
+     * @param int $courseid Course id.
+     * @param string $cap Short capability name (e.g. 'issuebatchcredentials').
+     * @return bool
+     */
+    private static function has_batch_cap(int $courseid, string $cap): bool {
+        $coursecontext = \context_course::instance($courseid);
+        return has_capability('tool/flexaccess:managebatches', \context_system::instance())
+            || has_capability('tool/flexaccess:managecoursebatches', $coursecontext)
+            || has_capability('tool/flexaccess:' . $cap, $coursecontext);
+    }
+
+    /**
+     * Require a granular batch capability, throwing the standard exception otherwise.
+     *
+     * @param int $courseid Course id.
+     * @param string $cap Short capability name.
+     * @return void
+     */
+    private static function require_batch_cap(int $courseid, string $cap): void {
+        if (!self::has_batch_cap($courseid, $cap)) {
+            throw new \required_capability_exception(
+                \context_course::instance($courseid),
+                'tool/flexaccess:' . $cap,
+                'nopermissions',
+                ''
+            );
+        }
+    }
+
+    /**
+     * Whether the current user may view the course's batches.
+     *
+     * @param int $courseid Course id.
+     * @return bool
+     */
+    public static function can_view(int $courseid): bool {
+        return self::has_batch_cap($courseid, 'viewcoursebatches');
+    }
+
+    /**
+     * Require batch-view permission for the course.
+     *
+     * @param int $courseid Course id.
+     * @return void
+     */
+    public static function require_view(int $courseid): void {
+        self::require_batch_cap($courseid, 'viewcoursebatches');
+    }
+
+    /**
+     * Require batch-create permission for the course.
+     *
+     * @param int $courseid Course id.
+     * @return void
+     */
+    public static function require_create(int $courseid): void {
+        self::require_batch_cap($courseid, 'createcoursebatches');
+    }
+
+    /**
+     * Whether the current user may create batches for the course.
+     *
+     * @param int $courseid Course id.
+     * @return bool
+     */
+    public static function can_create(int $courseid): bool {
+        return self::has_batch_cap($courseid, 'createcoursebatches');
+    }
+
+    /**
+     * Require credential-issuing permission for the course (rotating batch passwords).
+     *
+     * @param int $courseid Course id.
+     * @return void
+     */
+    public static function require_issue(int $courseid): void {
+        self::require_batch_cap($courseid, 'issuebatchcredentials');
+    }
+
+    /**
+     * Require account-conversion permission for the course.
+     *
+     * @param int $courseid Course id.
+     * @return void
+     */
+    public static function require_convert(int $courseid): void {
+        self::require_batch_cap($courseid, 'convertbatchaccounts');
     }
 
     /**
@@ -285,42 +384,51 @@ final class batch {
     ): array {
         global $DB, $USER;
         $now = $now ?? time();
-        $count = max(1, min(1000, $count));
+        $count = max(1, min(self::MAX_SYNC_CREATE, $count));
         $prefix = self::sanitise_prefix($usernameprefix);
 
-        $batchid = (int) $DB->insert_record(self::TABLE, (object) [
-            'name' => $name !== '' ? $name : $prefix,
-            'courseid' => $courseid,
-            'permanent' => $permanent ? 1 : 0,
-            'membercount' => 0,
-            'timecreated' => $now,
-            'usermodified' => (int) $USER->id,
-        ]);
-
-        $credentials = [];
-        $created = 0;
-        for ($i = 0; $i < $count; $i++) {
-            $username = self::unique_username($prefix);
-            $password = self::generate_password($passwordlength);
-            $userid = \auth_flexaccess\api::create_batch_account(
-                $username,
-                $password,
-                '',
-                '',
-                $permanent,
-                $timeexpires,
-                $now
-            );
-            \enrol_flexaccess\local\enrol_service::admin_enrol($courseid, $userid, !$permanent, $now);
-            $DB->insert_record(self::MEMBER_TABLE, (object) [
-                'batchid' => $batchid,
-                'userid' => $userid,
-                'username' => $username,
+        // Wrap the whole provisioning in a transaction: if any account creation/enrolment fails
+        // mid-run, the entire batch is rolled back instead of leaving a partial, inconsistent batch.
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            $batchid = (int) $DB->insert_record(self::TABLE, (object) [
+                'name' => $name !== '' ? $name : $prefix,
+                'courseid' => $courseid,
+                'permanent' => $permanent ? 1 : 0,
+                'membercount' => 0,
+                'timecreated' => $now,
+                'usermodified' => (int) $USER->id,
             ]);
-            $credentials[$username] = $password;
-            $created++;
+
+            $credentials = [];
+            $created = 0;
+            for ($i = 0; $i < $count; $i++) {
+                $username = self::unique_username($prefix);
+                $password = self::generate_password($passwordlength);
+                $userid = \auth_flexaccess\api::create_batch_account(
+                    $username,
+                    $password,
+                    '',
+                    '',
+                    $permanent,
+                    $timeexpires,
+                    $now
+                );
+                \enrol_flexaccess\local\enrol_service::admin_enrol($courseid, $userid, !$permanent, $now);
+                $DB->insert_record(self::MEMBER_TABLE, (object) [
+                    'batchid' => $batchid,
+                    'userid' => $userid,
+                    'username' => $username,
+                ]);
+                $credentials[$username] = $password;
+                $created++;
+            }
+            $DB->set_field(self::TABLE, 'membercount', $created, ['id' => $batchid]);
+            $transaction->allow_commit();
+        } catch (\Throwable $e) {
+            $transaction->rollback($e);
+            throw $e;
         }
-        $DB->set_field(self::TABLE, 'membercount', $created, ['id' => $batchid]);
 
         return ['batchid' => $batchid, 'credentials' => $credentials];
     }

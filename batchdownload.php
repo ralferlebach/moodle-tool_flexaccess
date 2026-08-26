@@ -15,10 +15,10 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Reset a batch's credentials and stream them as XLSX, PDF list, login cards, or a ZIP of all three.
- *
- * A download always issues fresh passwords (plain passwords are never persisted), so all files from
- * a single request share one consistent credential set.
+ * Issue a batch's credentials (rotating passwords) and stream them as XLSX, PDF list, login cards,
+ * or a ZIP of all three. Issuing is an explicit, confirmed action: it rotates passwords, so any
+ * previously issued credentials become invalid. Plain passwords are never persisted, so every file
+ * from a single confirmed issue shares one consistent, one-time credential set.
  *
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -31,20 +31,44 @@ use tool_flexaccess\local\batch;
 use tool_flexaccess\local\batch_export;
 
 require_login();
-require_sesskey();
 
 $id = required_param('id', PARAM_INT);
 $format = optional_param('format', 'all', PARAM_ALPHA);
+$confirm = optional_param('confirm', 0, PARAM_BOOL);
 
 $batch = batch::get($id);
 if (!$batch) {
     throw new moodle_exception('invalidrecord', 'error');
 }
+$courseid = (int) $batch->courseid;
 
-// A site manager (system context) or the owning course's teacher (course context) may download.
-batch::require_manage((int) $batch->courseid);
+// Issuing credentials rotates every (still batch-managed) member's password, so it is a distinct,
+// higher-risk right and an explicit, confirmed action - never a silent side effect of a download.
+batch::require_issue($courseid);
 
-// Fresh passwords for a consistent credential set across every generated file.
+$downloadurl = new moodle_url('/admin/tool/flexaccess/batchdownload.php', ['id' => $id, 'format' => $format]);
+
+if (!$confirm) {
+    $context = context_course::instance($courseid);
+    $PAGE->set_context($context);
+    $PAGE->set_url($downloadurl);
+    $PAGE->set_pagelayout('admin');
+    $PAGE->set_title(get_string('batch:issuecredentials', 'tool_flexaccess'));
+    $PAGE->set_heading(format_string($batch->name));
+    echo $OUTPUT->header();
+    echo $OUTPUT->confirm(
+        get_string('batch:issueconfirm', 'tool_flexaccess'),
+        new moodle_url($downloadurl, ['confirm' => 1, 'sesskey' => sesskey()]),
+        new moodle_url('/admin/tool/flexaccess/batches.php', ['action' => 'view', 'id' => $id])
+    );
+    echo $OUTPUT->footer();
+    exit;
+}
+
+require_sesskey();
+
+// Fresh passwords for a consistent credential set across every generated file. Members that have
+// been personalised/converted are skipped by reset_credentials() and keep their password.
 $credentials = batch::reset_credentials($id, 10);
 $courseurl = (new moodle_url('/course/view.php', ['id' => $batch->courseid]))->out(false);
 $base = clean_filename(format_string($batch->name)) ?: ('batch' . $id);

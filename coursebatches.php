@@ -35,7 +35,8 @@ require_login($course);
 $context = context_course::instance($courseid);
 batch::require_request($courseid);
 
-$canmanage = batch::can_manage($courseid);
+$cancreate = batch::can_create($courseid);
+$canview = batch::can_view($courseid);
 $baseurl = new moodle_url('/admin/tool/flexaccess/coursebatches.php', ['courseid' => $courseid]);
 $PAGE->set_context($context);
 $PAGE->set_url($baseurl);
@@ -44,7 +45,8 @@ $PAGE->set_title(get_string('coursebatches', 'tool_flexaccess'));
 $PAGE->set_heading(format_string($course->fullname));
 
 // Managers create a batch bound to this course.
-if ($action === 'new' && $canmanage) {
+if ($action === 'new' && $cancreate) {
+    batch::require_create($courseid);
     $form = new \tool_flexaccess\form\coursebatch_form($baseurl->out(false) . '&action=new');
     if ($prefillcount > 0) {
         $form->set_data(['count' => $prefillcount]);
@@ -68,7 +70,7 @@ if ($action === 'new' && $canmanage) {
 }
 
 // Teachers without provisioning rights request a batch, which notifies the course's provisioners.
-if ($action === 'request' && !$canmanage) {
+if ($action === 'request' && !$cancreate) {
     $form = new \tool_flexaccess\form\coursebatchrequest_form($baseurl->out(false) . '&action=request');
     if ($form->is_cancelled()) {
         redirect($baseurl);
@@ -96,7 +98,7 @@ echo $OUTPUT->heading(get_string('coursebatches', 'tool_flexaccess'));
 echo html_writer::tag('p', get_string('coursebatches_intro', 'tool_flexaccess'));
 
 echo html_writer::start_div('mb-3');
-if ($canmanage) {
+if ($cancreate) {
     echo $OUTPUT->single_button(
         new moodle_url($baseurl, ['action' => 'new']),
         get_string('batch:create', 'tool_flexaccess'),
@@ -111,14 +113,17 @@ if ($canmanage) {
 }
 echo html_writer::end_div();
 
-// Teachers without provisioning rights only see the request entry point above.
-if (!$canmanage) {
+// Users who may neither view nor create only see the request entry point above.
+if (!$canview) {
     echo $OUTPUT->notification(get_string('coursebatches_requesthint', 'tool_flexaccess'), 'info');
     echo $OUTPUT->footer();
     return;
 }
 
-$batches = batch::for_course($courseid);
+$page = optional_param('page', 0, PARAM_INT);
+$perpage = 50;
+$total = batch::count_for_course($courseid);
+$batches = batch::for_course($courseid, $page * $perpage, $perpage);
 if (!$batches) {
     echo $OUTPUT->notification(get_string('coursebatches_none', 'tool_flexaccess'), 'info');
     echo $OUTPUT->footer();
@@ -149,4 +154,7 @@ foreach ($batches as $b) {
     $table->data[] = [format_string($b->name), $type, $b->membercount, $links];
 }
 echo html_writer::table($table);
+if ($total > $perpage) {
+    echo $OUTPUT->paging_bar($total, $page, $perpage, $baseurl);
+}
 echo $OUTPUT->footer();

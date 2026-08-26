@@ -29,13 +29,15 @@ use tool_flexaccess\local\batch_import;
 
 require_login();
 $context = context_system::instance();
-require_capability('tool/flexaccess:managebatches', $context);
 
 $id = required_param('id', PARAM_INT);
 $batch = batch::get($id);
 if (!$batch) {
     redirect(new moodle_url('/admin/tool/flexaccess/batches.php'));
 }
+// Converting batch accounts is a granular, course-scoped right (managebatches/managecoursebatches
+// still grant it for backward compatibility).
+batch::require_convert((int) $batch->courseid);
 
 $PAGE->set_context($context);
 $PAGE->set_url(new moodle_url('/admin/tool/flexaccess/batchconvert.php', ['id' => $id]));

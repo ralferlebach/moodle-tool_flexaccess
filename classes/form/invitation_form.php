@@ -78,14 +78,26 @@ final class invitation_form extends \moodleform {
      */
     public function validation($data, $files): array {
         $errors = parent::validation($data, $files);
+        $seen = [];
         $valid = 0;
-        foreach (preg_split('/[\s,;]+/', (string) ($data['emails'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) as $email) {
-            if (validate_email(trim($email))) {
+        $invalid = [];
+        foreach (preg_split('/[\s,;]+/', (string) ($data['emails'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) as $raw) {
+            $email = \core_text::strtolower(trim($raw));
+            if (!validate_email($email)) {
+                $invalid[$email] = true;
+                continue;
+            }
+            // Duplicates are de-duplicated silently at creation; only invalid addresses are blocking.
+            if (!isset($seen[$email])) {
+                $seen[$email] = true;
                 $valid++;
             }
         }
         if ($valid === 0) {
             $errors['emails'] = get_string('invite:noemails', 'tool_flexaccess');
+        } else if ($invalid !== []) {
+            // Do not silently drop invalid addresses when some are valid: report them for correction.
+            $errors['emails'] = get_string('invite:invalidemails', 'tool_flexaccess', implode(', ', array_keys($invalid)));
         }
         return $errors;
     }
