@@ -218,7 +218,9 @@ function xmldb_tool_flexaccess_upgrade($oldversion) {
         $dbman = $DB->get_manager();
         $table = new xmldb_table('tool_flexaccess_campaign');
         // P1-9: the campaign token is a bearer secret and must not sit in the database in clear.
-        $field = new xmldb_field('tokenhash', XMLDB_TYPE_CHAR, '64', null, XMLDB_NOTNULL, null, '', 'courseid');
+        // No DEFAULT: XMLDB rejects '' as a default on a CHAR NOT NULL column (it emits a debugging
+        // message and silently rewrites it), so the column is added nullable-free without one.
+        $field = new xmldb_field('tokenhash', XMLDB_TYPE_CHAR, '64', null, XMLDB_NOTNULL, null, null, 'courseid');
         if (!$dbman->field_exists($table, $field)) {
             $dbman->add_field($table, $field);
         }
