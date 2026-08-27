@@ -59,7 +59,8 @@ if ($action === 'new') {
             (string) $data->usernameprefix,
             (int) $data->passwordlength,
             $timeexpires,
-            $now
+            $now,
+            (string) ($data->cardtext ?? '')
         );
         // Large batches are provisioned in the background; say so instead of implying they exist.
         $queued = ($result['status'] ?? '') === batch::STATUS_QUEUED;
@@ -93,21 +94,24 @@ if ($action === 'view' && $id > 0) {
     ]));
     echo $OUTPUT->notification(get_string('batchdownloadnote', 'tool_flexaccess'), 'info');
 
-    $dl = new moodle_url('/admin/tool/flexaccess/batchdownload.php', ['id' => $id, 'sesskey' => sesskey()]);
+    // One package, one download. Separate per-format downloads would each rotate the passwords and
+    // invalidate the files fetched before them.
+    $dl = new moodle_url('/admin/tool/flexaccess/batchdownload.php', ['id' => $id]);
+    $issued = (int) ($batch->timeissued ?? 0) > 0;
+    $mayreissue = has_capability('tool/flexaccess:managebatches', context_system::instance());
     echo html_writer::start_div('mb-3');
-    echo $OUTPUT->single_button(
-        new moodle_url($dl, ['format' => 'all']),
-        get_string('batchdownloadall', 'tool_flexaccess'),
-        'get'
-    );
+    if (!$issued || $mayreissue) {
+        echo $OUTPUT->single_button($dl, get_string('batchdownloadall', 'tool_flexaccess'), 'get');
+        if ($issued) {
+            echo html_writer::div(get_string('batchreissuewarning', 'tool_flexaccess'), 'text-danger mt-2');
+        }
+    } else {
+        echo html_writer::div(
+            get_string('batchissuedon', 'tool_flexaccess', userdate((int) $batch->timeissued)),
+            'alert alert-info'
+        );
+    }
     echo html_writer::end_div();
-    echo html_writer::div(
-        html_writer::link(new moodle_url($dl, ['format' => 'excel']), get_string('batchdownloadexcel', 'tool_flexaccess'))
-        . ' · ' .
-        html_writer::link(new moodle_url($dl, ['format' => 'pdflist']), get_string('batchdownloadpdflist', 'tool_flexaccess'))
-        . ' · ' .
-        html_writer::link(new moodle_url($dl, ['format' => 'cards']), get_string('batchdownloadcards', 'tool_flexaccess'))
-    );
     echo html_writer::tag('p', html_writer::link($returnurl, get_string('back')), ['class' => 'mt-3']);
 
     echo $OUTPUT->heading(get_string('batchconvert', 'tool_flexaccess'), 4);

@@ -33,7 +33,6 @@ use tool_flexaccess\local\batch_export;
 require_login();
 
 $id = required_param('id', PARAM_INT);
-$format = optional_param('format', 'all', PARAM_ALPHA);
 // Only a POST may rotate credentials; a GET renders the confirmation instead.
 $confirm = (optional_param('confirm', 0, PARAM_BOOL) && $_SERVER['REQUEST_METHOD'] === 'POST');
 
@@ -47,12 +46,19 @@ $courseid = (int) $batch->courseid;
 // higher-risk right and an explicit, confirmed action - never a silent side effect of a download.
 batch::require_issue($courseid);
 
+// Issued once. A repeat issue rotates every password and therefore invalidates the package that was
+// already handed out, so it is reserved for site administrators who can judge that consequence.
+$reissue = has_capability('tool/flexaccess:managebatches', context_system::instance());
+if ((int) $batch->timeissued > 0 && !$reissue) {
+    throw new moodle_exception('batchalreadyissued', 'tool_flexaccess');
+}
+
 // A batch that is still being provisioned has no complete member set to issue credentials for.
 if (($batch->status ?? batch::STATUS_COMPLETE) !== batch::STATUS_COMPLETE) {
     throw new moodle_exception('batchnotreadyyet', 'tool_flexaccess');
 }
 
-$downloadurl = new moodle_url('/admin/tool/flexaccess/batchdownload.php', ['id' => $id, 'format' => $format]);
+$downloadurl = new moodle_url('/admin/tool/flexaccess/batchdownload.php', ['id' => $id]);
 
 if (!$confirm) {
     $context = context_course::instance($courseid);
@@ -83,53 +89,27 @@ require_sesskey();
 
 // Fresh passwords for a consistent credential set across every generated file. Members that have
 // been personalised/converted are skipped by reset_credentials() and keep their password.
-$credentials = batch::reset_credentials($id, 10);
+$credentials = batch::reset_credentials($id);
+$DB->set_field('tool_flexaccess_batch', 'timeissued', time(), ['id' => $id]);
 $courseurl = (new moodle_url('/course/view.php', ['id' => $batch->courseid]))->out(false);
 $base = clean_filename(format_string($batch->name)) ?: ('batch' . $id);
 
-if ($format === 'excel') {
-    send_file(
-        batch_export::excel($batch, $credentials),
-        $base . '.xlsx',
-        0,
-        0,
-        true,
-        true,
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    );
-} else if ($format === 'pdflist') {
-    send_file(
-        batch_export::pdf_list($batch, $credentials),
-        $base . '-liste.pdf',
-        0,
-        0,
-        true,
-        true,
-        'application/pdf'
-    );
-} else if ($format === 'cards') {
-    send_file(
-        batch_export::login_cards($batch, $credentials, $courseurl),
-        $base . '-kaertchen.pdf',
-        0,
-        0,
-        true,
-        true,
-        'application/pdf'
-    );
-} else {
-    // Bundle all three into a ZIP built from one credential set.
-    $tempdir = make_request_directory();
-    $files = [
-        $base . '.xlsx' => $tempdir . '/' . $base . '.xlsx',
-        $base . '-liste.pdf' => $tempdir . '/' . $base . '-liste.pdf',
-        $base . '-kaertchen.pdf' => $tempdir . '/' . $base . '-kaertchen.pdf',
-    ];
-    file_put_contents($files[$base . '.xlsx'], batch_export::excel($batch, $credentials));
-    file_put_contents($files[$base . '-liste.pdf'], batch_export::pdf_list($batch, $credentials));
-    file_put_contents($files[$base . '-kaertchen.pdf'], batch_export::login_cards($batch, $credentials, $courseurl));
+// Only the complete package is offered: issuing rotates every password, so a second, separate
+// download would silently invalidate the files handed out first.
+// Bundle all three into a ZIP built from one credential set.
+$tempdir = make_request_directory();
+$files = [
+    $base . '.xlsx' => $tempdir . '/' . $base . '.xlsx',
+    $base . '-liste.pdf' => $tempdir . '/' . $base . '-liste.pdf',
+    $base . '-kaertchen.pdf' => $tempdir . '/' . $base . '-kaertchen.pdf',
+];
+file_put_contents($files[$base . '.xlsx'], batch_export::excel($batch, $credentials));
+file_put_contents($files[$base . '-liste.pdf'], batch_export::pdf_list($batch, $credentials));
+file_put_contents(
+    $files[$base . '-kaertchen.pdf'],
+    batch_export::login_cards($batch, $credentials, $courseurl, (string) ($batch->cardtext ?? ''))
+);
 
-    $zippath = $tempdir . '/' . $base . '.zip';
-    get_file_packer('application/zip')->archive_to_pathname($files, $zippath);
-    send_file($zippath, $base . '.zip', 0, 0, false, true, 'application/zip');
-}
+$zippath = $tempdir . '/' . $base . '.zip';
+get_file_packer('application/zip')->archive_to_pathname($files, $zippath);
+send_file($zippath, $base . '.zip', 0, 0, false, true, 'application/zip');

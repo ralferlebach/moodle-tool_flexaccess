@@ -43,6 +43,14 @@ final class coursebatchrequest_form extends \moodleform {
         $mform->setType('count', PARAM_INT);
         $mform->addRule('count', get_string('required'), 'required', null, 'client');
         $mform->setDefault('count', 10);
+        $mform->addElement(
+            'textarea',
+            'cardtext',
+            get_string('batchcardtext', 'tool_flexaccess'),
+            ['rows' => 3, 'cols' => 50]
+        );
+        $mform->setType('cardtext', PARAM_TEXT);
+        $mform->addHelpButton('cardtext', 'batchcardtext', 'tool_flexaccess');
 
         $this->add_action_buttons(true, get_string('coursebatches_request', 'tool_flexaccess'));
     }

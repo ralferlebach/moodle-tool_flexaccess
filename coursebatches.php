@@ -33,7 +33,7 @@ $prefillcount = optional_param('count', 0, PARAM_INT);
 $course = get_course($courseid);
 require_login($course);
 $context = context_course::instance($courseid);
-batch::require_request($courseid);
+batch::require_course_page($courseid);
 
 $cancreate = batch::can_create($courseid);
 $canview = batch::can_view($courseid);
@@ -54,7 +54,17 @@ if ($action === 'new' && $cancreate) {
     if ($form->is_cancelled()) {
         redirect($baseurl);
     } else if ($data = $form->get_data()) {
-        batch::create($data->name, $courseid, (bool) $data->permanent, (int) $data->count, $data->usernameprefix);
+        batch::create(
+            $data->name,
+            $courseid,
+            (bool) $data->permanent,
+            (int) $data->count,
+            $data->usernameprefix,
+            batch::DEFAULT_PASSWORD_LENGTH,
+            null,
+            null,
+            (string) ($data->cardtext ?? '')
+        );
         redirect(
             $baseurl,
             get_string('batchcreated', 'tool_flexaccess', $data->count),
@@ -139,16 +149,14 @@ $table->head = [
     get_string('download'),
 ];
 foreach ($batches as $b) {
-    $dl = new moodle_url('/admin/tool/flexaccess/batchdownload.php', ['id' => $b->id, 'sesskey' => sesskey()]);
-    $links = html_writer::link(new moodle_url($dl, ['format' => 'excel']), 'XLSX')
-        . ' · ' . html_writer::link(
-            new moodle_url($dl, ['format' => 'pdflist']),
-            get_string('batchdownloadpdflist', 'tool_flexaccess')
-        )
-        . ' · ' . html_writer::link(
-            new moodle_url($dl, ['format' => 'cards']),
-            get_string('batchdownloadcards', 'tool_flexaccess')
-        );
+    // A single package per batch, offered only until it has been issued: a second issue rotates
+    // every password and invalidates the copies already handed out.
+    $dl = new moodle_url('/admin/tool/flexaccess/batchdownload.php', ['id' => $b->id]);
+    if ((int) ($b->timeissued ?? 0) > 0) {
+        $links = get_string('batchissuedon', 'tool_flexaccess', userdate((int) $b->timeissued));
+    } else {
+        $links = html_writer::link($dl, get_string('batchdownloadall', 'tool_flexaccess'));
+    }
     $type = $b->permanent
         ? get_string('batchtype_permanent', 'tool_flexaccess')
         : get_string('batchtype_temporary', 'tool_flexaccess');

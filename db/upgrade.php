@@ -272,5 +272,21 @@ function xmldb_tool_flexaccess_upgrade($oldversion) {
         }
         upgrade_plugin_savepoint(true, 2026082434, 'tool', 'flexaccess');
     }
+    if ($oldversion < 2026082440) {
+        $dbman = $DB->get_manager();
+        // Free text printed on every login card, for example a short link or a contact address.
+        $table = new xmldb_table('tool_flexaccess_batch');
+        $field = new xmldb_field('cardtext', XMLDB_TYPE_TEXT, null, null, null, null, null, 'statusmessage');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        // Records that the credential package has been handed out, so it is not issued twice by
+        // accident - a second issue silently invalidates the copies already distributed.
+        $issued = new xmldb_field('timeissued', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'cardtext');
+        if (!$dbman->field_exists($table, $issued)) {
+            $dbman->add_field($table, $issued);
+        }
+        upgrade_plugin_savepoint(true, 2026082440, 'tool', 'flexaccess');
+    }
     return true;
 }

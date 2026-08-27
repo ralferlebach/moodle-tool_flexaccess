@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.63 — 2026-08-27 — Zugangslisten: Kärtchen, Freitext, Einmal-Ausgabe
+- **Kärtchen-Layout schnittgerecht.** Der Abstand zwischen zwei Karten ist doppelt so groß wie der Seitenrand (8 mm), sodass Halbieren und nochmaliges Halbieren der Seite bei jeder Karte denselben Rand ergibt. Nachgerechnet: alle Schnittkanten liegen exakt 8 mm von beiden angrenzenden Karten und von allen vier Seitenrändern entfernt; Kartenformat 89 × 58,25 mm.
+- **Keine Überlagerungen mehr.** Beschriftung steht jetzt *über* dem Wert statt daneben, sodass auch lange Anmeldenamen die volle Breite haben. Die Textspalte hält Abstand zum QR-Code.
+- **Freitext auf den Kärtchen.** Neues Feld `cardtext` (Upgrade `2026082440`, additiv), erfassbar bei Anlage **und** Beantragung einer Liste; wird links auf jeder Karte gedruckt und ist auf den freien Platz begrenzt.
+- **Passwörter sind standardmäßig 6 Zeichen lang.** Das Zeichenalphabet bleibt unverändert — ohne leicht verwechselbare Zeichen und ohne umständliche Sonderzeichen. Die Passwortrichtlinie der Website hat weiterhin Vorrang: Verlangt sie mehr Zeichen, werden mehr erzeugt.
+- **Nur noch ein Download.** Die Einzeldownloads (XLSX / PDF-Liste / Kärtchen) sind entfallen: Jeder Download vergibt die Passwörter neu, getrennte Dateien hätten einander entwertet. Es gibt ausschließlich das ZIP-Paket aus einem einzigen Satz Zugangsdaten.
+- **Ausgabe nur einmal.** Nach der Ausgabe wird der Zeitpunkt festgehalten (`timeissued`) und der Download für alle außer der Website-Administration gesperrt; für diese erscheint eine ausdrückliche Warnung, dass ein erneutes Ausstellen die bereits ausgegebenen Exemplare entwertet.
+- **Capability-Lücke geschlossen:** Die Kursseite öffnet sich jetzt bei *jeder* relevanten Berechtigung (ansehen, erstellen oder beantragen) statt nur beim Antragsrecht; jede Aktion bleibt einzeln geschützt. `can_request()` berücksichtigt `createcoursebatches`, und Anfragen erreichen auch Personen, die nur dieses Recht besitzen.
+- Versions-Gleichschritt `2026082440`.
+
 ## 0.9.62 — 2026-08-27 — Versions-Gleichschritt
 - Keine Codeänderung. Versions-Gleichschritt auf `2026082439`.
 

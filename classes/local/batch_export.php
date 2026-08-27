@@ -30,6 +30,8 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 final class batch_export {
+    /** Margin to the page edge in millimetres; the gap between two cards is twice this value. */
+    private const CARD_MARGIN = 8.0;
     /**
      * Build the XLSX bytes: username, password, (empty) first name, last name, email, profile fields.
      *
@@ -137,14 +139,25 @@ final class batch_export {
     }
 
     /**
-     * Build printable login cards (8 per A4 page): username, password, course URL and a QR code.
+     * Render printable login cards, laid out so the sheet can be cut into equal cards.
+     *
+     * The grid is built around the cut lines: the gap between two cards is twice the page margin,
+     * so halving the sheet and halving again leaves every card with the same border on all four
+     * sides. Text areas are stacked without overlap, and the free-text area on the left of each
+     * card carries whatever the requester supplied (a short link, a contact, ...).
      *
      * @param \stdClass $batch Batch record.
-     * @param array $credentials Map of username => plain password.
-     * @param string $courseurl Absolute course/login URL for the QR code and caption.
-     * @return string Binary PDF content.
+     * @param array $credentials username => plain password.
+     * @param string $courseurl Course URL printed and encoded as a QR code.
+     * @param string $freetext Optional text supplied with the batch request.
+     * @return string PDF document.
      */
-    public static function login_cards(\stdClass $batch, array $credentials, string $courseurl): string {
+    public static function login_cards(
+        \stdClass $batch,
+        array $credentials,
+        string $courseurl,
+        string $freetext = ''
+    ): string {
         global $CFG;
         require_once($CFG->libdir . '/pdflib.php');
         ksort($credentials);
@@ -156,14 +169,19 @@ final class batch_export {
         $pdf->setPrintFooter(false);
         $pdf->SetAutoPageBreak(false);
 
-        // Grid: 2 columns x 4 rows = 8 cards per page.
+        $pagew = 210.0;
+        $pageh = 297.0;
         $cols = 2;
         $rows = 4;
         $perpage = $cols * $rows;
-        $marginx = 10;
-        $marginy = 10;
-        $cardw = (210 - 2 * $marginx) / $cols;
-        $cardh = (297 - 2 * $marginy) / $rows;
+
+        // Margin to the page edge; the gap between two cards is twice that, so a cut down the
+        // middle leaves both halves with exactly this margin again.
+        $margin = self::CARD_MARGIN;
+        $gap = 2 * $margin;
+        $cardw = ($pagew - 2 * $margin - ($cols - 1) * $gap) / $cols;
+        $cardh = ($pageh - 2 * $margin - ($rows - 1) * $gap) / $rows;
+
         $qrstyle = [
             'border' => false,
             'padding' => 0,
@@ -177,36 +195,74 @@ final class batch_export {
                 $pdf->AddPage();
             }
             $slot = $i % $perpage;
-            $cx = $marginx + ($slot % $cols) * $cardw;
-            $cy = $marginy + intdiv($slot, $cols) * $cardh;
+            $cx = $margin + ($slot % $cols) * ($cardw + $gap);
+            $cy = $margin + intdiv($slot, $cols) * ($cardh + $gap);
 
-            $pdf->RoundedRect($cx + 2, $cy + 2, $cardw - 4, $cardh - 4, 2, '1111', 'D');
-            $pad = 6;
-            $textx = $cx + $pad;
-            $texty = $cy + $pad;
+            $pdf->RoundedRect($cx, $cy, $cardw, $cardh, 2, '1111', 'D');
 
-            $pdf->SetFont('helvetica', 'B', 11);
-            $pdf->SetXY($textx, $texty);
-            $pdf->Cell($cardw - 2 * $pad, 6, self::batch_title($batch), 0, 2, 'L');
+            $pad = 5.0;
+            $innerw = $cardw - 2 * $pad;
+            $qrsize = 22.0;
+            // The QR code sits bottom right; the text column keeps clear of it so nothing overlaps.
+            $textw = $innerw - $qrsize - 3;
+            $x = $cx + $pad;
+            $y = $cy + $pad;
 
-            $pdf->SetFont('helvetica', '', 9);
-            $pdf->SetXY($textx, $texty + 8);
-            $pdf->Cell(20, 5, get_string('batchcol_username', 'tool_flexaccess') . ':', 0, 0, 'L');
-            $pdf->SetFont('courier', 'B', 10);
-            $pdf->Cell($cardw - 2 * $pad - 20, 5, (string) $username, 0, 2, 'L');
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->SetXY($x, $y);
+            $pdf->Cell($innerw, 5, self::batch_title($batch), 0, 0, 'L');
+            $y += 7;
 
-            $pdf->SetFont('helvetica', '', 9);
-            $pdf->SetXY($textx, $texty + 14);
-            $pdf->Cell(20, 5, get_string('batchcol_password', 'tool_flexaccess') . ':', 0, 0, 'L');
-            $pdf->SetFont('courier', 'B', 10);
-            $pdf->Cell($cardw - 2 * $pad - 20, 5, (string) $password, 0, 2, 'L');
+            // Label above the value rather than beside it: a long username then has the full width
+            // and can never run into the value next to it.
+            foreach (
+                [
+                    [get_string('batchcol_username', 'tool_flexaccess'), (string) $username],
+                    [get_string('batchcol_password', 'tool_flexaccess'), (string) $password],
+                ] as [$label, $value]
+            ) {
+                $pdf->SetFont('helvetica', '', 7);
+                $pdf->SetXY($x, $y);
+                $pdf->Cell($textw, 3.5, $label, 0, 0, 'L');
+                $y += 3.5;
+                $pdf->SetFont('courier', 'B', 11);
+                $pdf->SetXY($x, $y);
+                $pdf->Cell($textw, 5, $value, 0, 0, 'L');
+                $y += 6.5;
+            }
 
             if ($courseurl !== '') {
+                $pdf->SetFont('helvetica', '', 6.5);
+                $pdf->SetXY($x, $y);
+                $pdf->MultiCell($textw, 3, $courseurl, 0, 'L');
+                $y = $pdf->GetY() + 1;
+            }
+
+            if (trim($freetext) !== '') {
                 $pdf->SetFont('helvetica', '', 7);
-                $pdf->SetXY($textx, $texty + 21);
-                $pdf->MultiCell($cardw - 2 * $pad - 26, 4, $courseurl, 0, 'L');
-                // QR code bottom-right of the card.
-                $qrsize = 24;
+                $pdf->SetXY($x, $y);
+                // Bounded to the space left above the card edge, so it cannot spill over.
+                $available = ($cy + $cardh - $pad) - $y;
+                $pdf->MultiCell(
+                    $textw,
+                    3.2,
+                    $freetext,
+                    0,
+                    'L',
+                    false,
+                    1,
+                    '',
+                    '',
+                    true,
+                    0,
+                    false,
+                    true,
+                    $available,
+                    'T'
+                );
+            }
+
+            if ($courseurl !== '') {
                 $pdf->write2DBarcode(
                     $courseurl,
                     'QRCODE,M',

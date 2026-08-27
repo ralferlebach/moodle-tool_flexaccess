@@ -72,9 +72,9 @@ final class batch_form extends \moodleform {
 
         // Offering a length the site's password policy would reject only leads to a rejected
         // batch, so the choices start at the effective minimum.
-        $minimum = max(8, (int) ($CFG->minpasswordlength ?? 8));
+        $minimum = max(\tool_flexaccess\local\batch::MIN_PASSWORD_LENGTH, (int) ($CFG->minpasswordlength ?? 0));
         $lengths = [];
-        foreach ([8, 10, 12, 14, 16] as $length) {
+        foreach ([6, 8, 10, 12, 14, 16] as $length) {
             if ($length >= $minimum) {
                 $lengths[$length] = (string) $length;
             }
@@ -82,8 +82,17 @@ final class batch_form extends \moodleform {
         if (!$lengths) {
             $lengths[$minimum] = (string) $minimum;
         }
+        $mform->addElement(
+            'textarea',
+            'cardtext',
+            get_string('batchcardtext', 'tool_flexaccess'),
+            ['rows' => 3, 'cols' => 50]
+        );
+        $mform->setType('cardtext', PARAM_TEXT);
+        $mform->addHelpButton('cardtext', 'batchcardtext', 'tool_flexaccess');
+
         $mform->addElement('select', 'passwordlength', get_string('batchpasswordlength', 'tool_flexaccess'), $lengths);
-        $mform->setDefault('passwordlength', max($minimum, 10));
+        $mform->setDefault('passwordlength', max($minimum, \tool_flexaccess\local\batch::DEFAULT_PASSWORD_LENGTH));
 
         $mform->addElement(
             'duration',

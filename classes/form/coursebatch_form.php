@@ -62,6 +62,14 @@ final class coursebatch_form extends \moodleform {
         );
         $mform->setType('usernameprefix', PARAM_ALPHANUM);
         $mform->setDefault('usernameprefix', 'kurs');
+        $mform->addElement(
+            'textarea',
+            'cardtext',
+            get_string('batchcardtext', 'tool_flexaccess'),
+            ['rows' => 3, 'cols' => 50]
+        );
+        $mform->setType('cardtext', PARAM_TEXT);
+        $mform->addHelpButton('cardtext', 'batchcardtext', 'tool_flexaccess');
 
         $this->add_action_buttons(true, get_string('batchcreate', 'tool_flexaccess'));
     }

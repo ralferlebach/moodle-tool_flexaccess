@@ -39,6 +39,12 @@ final class batch {
     /** Hard upper bound on accounts requested in one batch. */
     private const MAX_SYNC_CREATE = 1000;
 
+    /** Absolute minimum length, regardless of what a caller asks for. */
+    public const MIN_PASSWORD_LENGTH = 6;
+
+    /** Default length of a generated password; short enough to type, long enough to be unguessable. */
+    public const DEFAULT_PASSWORD_LENGTH = 6;
+
     /** How often a generated password may be re-rolled to satisfy the site's password policy. */
     private const PASSWORD_ATTEMPTS = 50;
 
@@ -253,8 +259,43 @@ final class batch {
      * @return bool
      */
     public static function can_request(int $courseid): bool {
+        // Anyone who may create a batch can trivially request one, so createcoursebatches counts
+        // here too - otherwise a role holding only that capability was refused the page it is
+        // supposed to work on.
         return self::can_manage($courseid)
+            || self::has_batch_cap($courseid, 'createcoursebatches')
             || has_capability('tool/flexaccess:requestbatches', \context_course::instance($courseid));
+    }
+
+    /**
+     * Whether the user may open the course batch page at all.
+     *
+     * The page hosts several operations, each guarded separately. Access is granted when at least
+     * one of them is permitted; granular capabilities would otherwise be meaningless, because a
+     * role allowed only to view was refused the page outright.
+     *
+     * @param int $courseid Course id.
+     * @return bool
+     */
+    public static function can_open_course_page(int $courseid): bool {
+        return self::can_view($courseid) || self::can_create($courseid) || self::can_request($courseid);
+    }
+
+    /**
+     * Require permission to open the course batch page.
+     *
+     * @param int $courseid Course id.
+     * @return void
+     */
+    public static function require_course_page(int $courseid): void {
+        if (!self::can_open_course_page($courseid)) {
+            throw new \required_capability_exception(
+                \context_course::instance($courseid),
+                'tool/flexaccess:viewcoursebatches',
+                'nopermissions',
+                ''
+            );
+        }
     }
 
     /**
@@ -285,6 +326,12 @@ final class batch {
         $recipients = get_users_by_capability(
             \context_course::instance($courseid),
             'tool/flexaccess:managecoursebatches'
+        );
+        // Holders of the granular create capability are provisioners too; leaving them out meant a
+        // request never reached some of the people who could actually fulfil it.
+        $recipients += get_users_by_capability(
+            \context_course::instance($courseid),
+            'tool/flexaccess:createcoursebatches'
         );
         $recipients += get_users_by_capability(
             \context_system::instance(),
@@ -372,13 +419,15 @@ final class batch {
      * @param int $length Password length (minimum 8).
      * @return string
      */
-    public static function generate_password(int $length = 10): string {
+    public static function generate_password(int $length = self::DEFAULT_PASSWORD_LENGTH): string {
         global $CFG;
         // Respect the site's password policy. A generated password that the policy would reject
         // leaves the account unusable the moment the user tries to change it, and silently
         // undercuts a security setting the administrator deliberately made (for example a
         // 12-character minimum, or required character classes).
-        $length = max(8, $length, (int) ($CFG->minpasswordlength ?? 8));
+        // The requested length is a floor, never a ceiling: the site policy always wins, so a site
+        // demanding twelve characters still gets twelve even when six were asked for.
+        $length = max(self::MIN_PASSWORD_LENGTH, $length, (int) ($CFG->minpasswordlength ?? 0));
         $alphabet = self::PASS_ALPHABET;
         $max = strlen($alphabet) - 1;
         for ($attempt = 0; $attempt < self::PASSWORD_ATTEMPTS; $attempt++) {
@@ -422,9 +471,10 @@ final class batch {
         bool $permanent,
         int $count,
         string $usernameprefix = 'kurs',
-        int $passwordlength = 10,
+        int $passwordlength = self::DEFAULT_PASSWORD_LENGTH,
         ?int $timeexpires = null,
-        ?int $now = null
+        ?int $now = null,
+        string $cardtext = ''
     ): array {
         global $DB, $USER;
         $now = $now ?? time();
@@ -439,6 +489,7 @@ final class batch {
             'membercount' => 0,
             'requestedcount' => $count,
             'status' => $async ? self::STATUS_QUEUED : self::STATUS_CREATING,
+            'cardtext' => $cardtext,
             'timecreated' => $now,
             'usermodified' => (int) $USER->id,
         ]);
