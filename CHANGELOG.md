@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.60 — 2026-08-27 — Testserver auf 127.0.0.1
+- Der Testserver wird an `127.0.0.1` gebunden und unter derselben Adresse angesprochen; `localhost` konnte je nach Client nach `::1` aufgelöst werden, wohin der Server nicht lauscht.
+- Versions-Gleichschritt `2026082437`.
+
 ## 0.9.59 — 2026-08-27 — Passwortrichtlinie in der Oberfläche, Tests, Browser-Journeys
 - **Die Auswahl der Passwortlänge beginnt bei der effektiven Mindestlänge der Website.** Eine Länge anzubieten, die die Passwortrichtlinie ohnehin ablehnt, führte nur zu einem abgelehnten Batch.
 - **Neue Tests `password_policy_test`:** Der Generator erfüllt auch eine strenge Richtlinie (14 Zeichen, alle Zeichenklassen), die Bereitstellung erzeugt ausschließlich richtlinienkonforme Passwörter, und eine unerfüllbare Richtlinie führt zu einem klaren Abbruch statt zu unbrauchbaren Konten.
