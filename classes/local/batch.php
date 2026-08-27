@@ -462,6 +462,7 @@ final class batch {
      * @param int $passwordlength Password length.
      * @param int|null $timeexpires Expiry for temporary accounts (0/null = plugin default).
      * @param int|null $now Current time.
+     * @param string $cardtext Free text printed on each login card.
      * @return array{batchid:int, credentials:array<string,string>, status:string} Batch id, the
      *     username=>password map (empty when queued) and the resulting provisioning status.
      */
