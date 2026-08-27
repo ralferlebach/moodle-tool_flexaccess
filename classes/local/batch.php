@@ -132,8 +132,15 @@ final class batch {
      * @return bool
      */
     public static function can_manage(int $courseid): bool {
-        return has_capability('tool/flexaccess:managebatches', \context_system::instance())
-            || has_capability('tool/flexaccess:managecoursebatches', \context_course::instance($courseid));
+        // Both capabilities are evaluated in the COURSE context, including the site-wide
+        // managebatches: a role assigned at system level still resolves here, because capability
+        // checks walk up the context path. Asking about the system context instead would break
+        // role switching - Moodle suspends the administrator bypass only for the context the switch
+        // applies to, so a system-context question keeps answering "yes" while previewing a course
+        // as a student.
+        $coursecontext = \context_course::instance($courseid);
+        return has_capability('tool/flexaccess:managebatches', $coursecontext)
+            || has_capability('tool/flexaccess:managecoursebatches', $coursecontext);
     }
 
     /**
@@ -165,8 +172,9 @@ final class batch {
      * @return bool
      */
     private static function has_batch_cap(int $courseid, string $cap): bool {
+        // Every check runs in the course context, so a role switch is honoured; see can_manage().
         $coursecontext = \context_course::instance($courseid);
-        return has_capability('tool/flexaccess:managebatches', \context_system::instance())
+        return has_capability('tool/flexaccess:managebatches', $coursecontext)
             || has_capability('tool/flexaccess:managecoursebatches', $coursecontext)
             || has_capability('tool/flexaccess:' . $cap, $coursecontext);
     }
