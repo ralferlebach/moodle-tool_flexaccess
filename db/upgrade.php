@@ -179,7 +179,7 @@ function xmldb_tool_flexaccess_upgrade($oldversion) {
 
     if ($oldversion < 2026082415) {
         $dbman = $DB->get_manager();
-        // P0-1: mark batch members that have left batch management (personalised/converted), so
+        // Mark batch members that have left batch management (personalised/converted), so
         // their password can never be rotated again by a batch credential re-issue.
         $table = new xmldb_table('tool_flexaccess_batch_member');
         $field = new xmldb_field('converted', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'username');
@@ -217,7 +217,7 @@ function xmldb_tool_flexaccess_upgrade($oldversion) {
     if ($oldversion < 2026082425) {
         $dbman = $DB->get_manager();
         $table = new xmldb_table('tool_flexaccess_campaign');
-        // P1-9: the campaign token is a bearer secret and must not sit in the database in clear.
+        // The campaign token is a bearer secret and must not sit in the database in clear.
         // No DEFAULT: XMLDB rejects '' as a default on a CHAR NOT NULL column (it emits a debugging
         // message and silently rewrites it), so the column is added nullable-free without one.
         $field = new xmldb_field('tokenhash', XMLDB_TYPE_CHAR, '64', null, XMLDB_NOTNULL, null, null, 'courseid');
@@ -264,7 +264,7 @@ function xmldb_tool_flexaccess_upgrade($oldversion) {
     if ($oldversion < 2026082434) {
         $dbman = $DB->get_manager();
         // A resend must not destroy a link that already works: the newly minted token is parked here
-        // and only replaces the live one once the mail has actually been delivered (P0-2).
+        // and only replaces the live one once the mail has actually been delivered.
         $table = new xmldb_table('tool_flexaccess_invite');
         $field = new xmldb_field('pendingtokenhash', XMLDB_TYPE_CHAR, '64', null, null, null, null, 'tokenhash');
         if (!$dbman->field_exists($table, $field)) {

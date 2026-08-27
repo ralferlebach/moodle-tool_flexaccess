@@ -47,6 +47,7 @@ $string['accounttypetemporary'] = 'Temporary users';
 $string['authunavailable'] = 'The auth_flexaccess plugin is not installed, so account data is unavailable.';
 $string['batchaccounttype'] = 'Account type';
 $string['batchaccounttype_help'] = 'Temporary accounts are restricted and expire; permanent accounts are full authenticated accounts (their email is a placeholder until you personalise them).';
+$string['batchcleanupfailed'] = 'An account created during provisioning could not be removed after a failure (user id {$a}). Please check it manually.';
 $string['batchcol_email'] = 'Email';
 $string['batchcol_firstname'] = 'First name';
 $string['batchcol_lastname'] = 'Last name';

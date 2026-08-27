@@ -19,7 +19,7 @@ namespace tool_flexaccess;
 use tool_flexaccess\local\batch;
 
 /**
- * P0-1: a personalised/converted batch member must never have its password rotated by a batch
+ * a personalised/converted batch member must never have its password rotated by a batch
  * credential re-issue (credential-takeover protection).
  *
  * @package    tool_flexaccess

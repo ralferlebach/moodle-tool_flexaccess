@@ -47,7 +47,7 @@ final class batch_import {
     /** Username rule: firstname.lastname. */
     public const RULE_FIRSTLAST = 'firstlast';
 
-    /** Maximum accepted import file size (2 MiB) - guards the XLSX reader (P0-4). */
+    /** Maximum accepted import file size (2 MiB) - guards the XLSX reader. */
     public const MAX_IMPORT_BYTES = 2097152;
 
     /** Rows converted before progress is written back; keeps each unit of work small. */
@@ -59,7 +59,7 @@ final class batch_import {
     /** Schema marker written to H1 by the exporter; the importer accepts only this format. */
     public const SCHEMA_VERSION = 'FLEXACCESS-BATCH-V1';
 
-    /** Maximum data rows read from an import file, bounding the row iterator (P0-4). */
+    /** Maximum data rows read from an import file, bounding the row iterator. */
     public const MAX_IMPORT_ROWS = 2000;
 
     /**
@@ -84,7 +84,7 @@ final class batch_import {
      *
      * Hardened against the PhpSpreadsheet unbounded-row-dimension CPU DoS (CVE-2026-40902): the file
      * size is capped, an explicit read-only Xlsx reader is used (no format sniffing), and the row
-     * iteration is bounded to a fixed window regardless of the sheet's declared dimensions (P0-4).
+     * iteration is bounded to a fixed window regardless of the sheet's declared dimensions.
      *
      * @param string $filepath Absolute path to the uploaded .xlsx file.
      * @return array<int,array{username:string,firstname:string,lastname:string,email:string,newusername:string}>
@@ -307,7 +307,7 @@ final class batch_import {
                 $DB->set_field(self::MEMBER_TABLE, 'username', $email, ['id' => $member->id]);
             }
             // Mark the member as no longer batch-managed: a later credential re-issue must never
-            // touch this now-personalised, permanent account (P0-1).
+            // touch this now-personalised, permanent account.
             $DB->set_field(self::MEMBER_TABLE, 'converted', 1, ['id' => $member->id]);
             $DB->set_field(self::MEMBER_TABLE, 'converterror', null, ['id' => $member->id]);
             $converted++;

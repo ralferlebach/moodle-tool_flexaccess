@@ -169,7 +169,7 @@ final class invitation {
         // Parked, not activated: a resend must not invalidate a link that already works. The new
         // token only replaces the live one once the mail has actually been delivered - otherwise a
         // failed resend would leave the recipient with a link that stopped working for nothing, and
-        // several queued jobs would each kill the previous mail's link (P0-2).
+        // several queued jobs would each kill the previous mail's link.
         $DB->set_field(self::TABLE, 'pendingtokenhash', $hash, ['id' => $id]);
         return $token;
     }
@@ -404,10 +404,18 @@ final class invitation {
         // De-duplicate: an identical job still waiting in the queue would send a second mail and,
         // worse, park a second token - each delivery invalidating the previous link.
         $jobcontext = ['invitationid' => (int) $invite->id, 'kind' => $kind];
-        if (
-            method_exists('\auth_flexaccess\api', 'deferred_mail_queued')
-                && \auth_flexaccess\api::deferred_mail_queued(invitation_mail_renderer::class, $jobcontext)
-        ) {
+        if (method_exists('\auth_flexaccess\api', 'queue_deferred_mail_once')) {
+            // Atomic: a second, parallel request must not be able to queue the same mail again.
+            // Zero means an identical job was already waiting, which is a success for the caller.
+            \auth_flexaccess\api::queue_deferred_mail_once(
+                null,
+                $invite->email,
+                'invite',
+                invitation_mail_renderer::class,
+                $jobcontext,
+                $now,
+                $now
+            );
             return true;
         }
         return (bool) \auth_flexaccess\api::queue_deferred_mail(

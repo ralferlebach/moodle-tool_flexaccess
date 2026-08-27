@@ -130,4 +130,65 @@ final class failure_atomicity_test extends \advanced_testcase {
         preg_match('/token=([0-9a-f]{32})/', quoted_printable_decode((string) end($messages)->body), $m);
         return $m[1] ?? '';
     }
+
+    public function test_member_insert_failure_after_enrolment_leaves_no_orphan(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $course = $this->getDataGenerator()->create_course();
+        $result = batch::create('Late', (int) $course->id, false, 1, 'kurs');
+        $batchid = (int) $result['batchid'];
+
+        $before = $DB->count_records('user', ['auth' => 'flexaccess', 'deleted' => 0]);
+
+        // Break the LAST step only: enrolment succeeds, recording the membership does not. A too
+        // long username violates the column and fails exactly at the insert.
+        $overlong = str_repeat('x', 120);
+        try {
+            batch::provision_members($batchid, 1, false, $overlong);
+            $this->fail('The member insert should have failed for an over-long username.');
+        } catch (\Throwable $e) {
+            $this->assertInstanceOf(\Throwable::class, $e);
+        }
+
+        $after = $DB->count_records('user', ['auth' => 'flexaccess', 'deleted' => 0]);
+        $this->assertSame($before, $after, 'An account survived a failure at the membership insert.');
+    }
+
+    public function test_failed_acknowledge_does_not_resend_a_delivered_mail(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        if (!method_exists('\auth_flexaccess\api', 'queue_deferred_mail')) {
+            $this->markTestSkipped('auth_flexaccess predates the deferred queue.');
+        }
+        // Fixtures under tests/ are not autoloaded; Moodle only autoloads from classes/.
+        require_once(__DIR__ . '/fixtures/failing_ack_renderer.php');
+
+        // A renderer whose acknowledgement always fails: the mail goes out, the callback does not.
+        \auth_flexaccess\api::queue_deferred_mail(
+            null,
+            'ack@example.com',
+            'test',
+            \tool_flexaccess\tests\fixtures\failing_ack_renderer::class,
+            ['note' => 'x']
+        );
+
+        $sink = $this->redirectEmails();
+        \auth_flexaccess\local\mail_worker::run(time());
+        $first = count($sink->get_messages());
+        $sink->close();
+        $this->assertSame(1, $first, 'The mail should have been delivered exactly once.');
+
+        // The job must not be queued for another delivery - the mail cannot be un-sent.
+        $this->assertSame(0, $DB->count_records('auth_flexaccess_mailqueue', ['status' => 'queued']));
+        $this->assertSame(1, $DB->count_records('auth_flexaccess_mailqueue', ['status' => 'ackpending']));
+
+        // A later run retries only the acknowledgement and sends nothing again.
+        $sink = $this->redirectEmails();
+        \auth_flexaccess\local\mail_worker::run(time() + DAYSECS);
+        $second = count($sink->get_messages());
+        $sink->close();
+        $this->assertSame(0, $second, 'A delivered mail was sent again because of a callback failure.');
+    }
 }

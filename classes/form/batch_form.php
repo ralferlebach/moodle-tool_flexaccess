@@ -34,6 +34,7 @@ final class batch_form extends \moodleform {
      * @return void
      */
     protected function definition(): void {
+        global $CFG;
         $mform = $this->_form;
 
         $mform->addElement('text', 'name', get_string('batchname', 'tool_flexaccess'), ['size' => 48]);
@@ -69,10 +70,20 @@ final class batch_form extends \moodleform {
         $mform->setDefault('usernameprefix', 'kurs');
         $mform->addHelpButton('usernameprefix', 'batchusernameprefix', 'tool_flexaccess');
 
-        $mform->addElement('select', 'passwordlength', get_string('batchpasswordlength', 'tool_flexaccess'), [
-            8 => '8', 10 => '10', 12 => '12', 14 => '14', 16 => '16',
-        ]);
-        $mform->setDefault('passwordlength', 10);
+        // Offering a length the site's password policy would reject only leads to a rejected
+        // batch, so the choices start at the effective minimum.
+        $minimum = max(8, (int) ($CFG->minpasswordlength ?? 8));
+        $lengths = [];
+        foreach ([8, 10, 12, 14, 16] as $length) {
+            if ($length >= $minimum) {
+                $lengths[$length] = (string) $length;
+            }
+        }
+        if (!$lengths) {
+            $lengths[$minimum] = (string) $minimum;
+        }
+        $mform->addElement('select', 'passwordlength', get_string('batchpasswordlength', 'tool_flexaccess'), $lengths);
+        $mform->setDefault('passwordlength', max($minimum, 10));
 
         $mform->addElement(
             'duration',

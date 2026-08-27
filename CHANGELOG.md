@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.59 — 2026-08-27 — Passwortrichtlinie in der Oberfläche, Tests, Browser-Journeys
+- **Die Auswahl der Passwortlänge beginnt bei der effektiven Mindestlänge der Website.** Eine Länge anzubieten, die die Passwortrichtlinie ohnehin ablehnt, führte nur zu einem abgelehnten Batch.
+- **Neue Tests `password_policy_test`:** Der Generator erfüllt auch eine strenge Richtlinie (14 Zeichen, alle Zeichenklassen), die Bereitstellung erzeugt ausschließlich richtlinienkonforme Passwörter, und eine unerfüllbare Richtlinie führt zu einem klaren Abbruch statt zu unbrauchbaren Konten.
+- Versions-Gleichschritt `2026082436`.
+
+## 0.9.58 — 2026-08-27 — Kompensation nachvollziehbar, zusätzliche Fehlerinjektion
+- **Eine fehlgeschlagene Kompensation wird nicht mehr stillschweigend verworfen.** Lässt sich ein Konto nach abgebrochener Bereitstellung nicht entfernen, wird das über `debugging()` gemeldet und als Statusmeldung am Batch hinterlegt, damit der Überrest sichtbar bleibt und gezielt bereinigt werden kann.
+- **Einladungsversand nutzt die atomare Deduplizierung** der Mailqueue, sodass gleichzeitige Aktionen genau einen Versandauftrag erzeugen.
+- **Zwei zusätzliche Fehlerinjektionstests:** Fehler beim Eintragen der Mitgliedschaft **nach** erfolgreicher Einschreibung hinterlässt kein Konto; eine bereits zugestellte Mail wird bei fehlgeschlagener Quittung nicht erneut versendet.
+- **Kommentare überarbeitet:** Verweise auf Review-Vorgangsnummern und Formulierungen, die den Bearbeitungsverlauf beschreiben, sind durch Sachaussagen zum Code ersetzt.
+- Versions-Gleichschritt `2026082435`.
+
 ## 0.9.57 — 2026-08-27 — Review 0.9.51: beide RC-Blocker geschlossen
 - **P0-1 Provisioning ist jetzt pro Mitglied atomar.** Bisher entstand bei einem Fehler nach `create_batch_account()` — etwa in `admin_enrol()` oder beim Member-Insert — ein Konto, das der resumierbare Batch nicht kennt; ein Retry legte ein **weiteres** an. Jeder Mitgliedsschritt ist nun in `try/catch` gekapselt und löst bei Fehlschlag eine Kompensation aus (`auth::rollback_batch_account()`). Diese greift ausschließlich bei FlexAccess-Konten mit Platzhalter-Adresse — ein personalisiertes Konto kann darüber nie gelöscht werden.
 - **P0-2 Ein fehlgeschlagener Resend zerstört keinen funktionierenden Link mehr.** Der Renderer rotierte den Tokenhash **vor** dem Versand; scheiterte die Mail, war der zuvor zugestellte Link wertlos, und mehrere eingeplante Jobs entwerteten jeweils die Mail des vorherigen. Neu: Der erzeugte Token wird in `pendingtokenhash` geparkt (Upgrade `2026082434`, additiv) und ersetzt den aktiven Hash **erst nach bestätigter Zustellung**. Der zuletzt zugestellte Link bleibt bis dahin gültig.

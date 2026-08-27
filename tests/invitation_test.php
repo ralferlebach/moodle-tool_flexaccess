@@ -237,7 +237,7 @@ final class invitation_test extends \advanced_testcase {
     }
 
     /**
-     * P0-2: reserving does not consume the invitation; releasing returns it to pending so a failed
+     * reserving does not consume the invitation; releasing returns it to pending so a failed
      * registration can be retried, while committing finalises it (and blocks reuse).
      *
      * @return void

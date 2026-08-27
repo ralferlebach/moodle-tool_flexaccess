@@ -47,6 +47,7 @@ $string['accounttypetemporary'] = 'Temporäre Nutzer';
 $string['authunavailable'] = 'Das Plugin auth_flexaccess ist nicht installiert, daher sind keine Kontodaten verfügbar.';
 $string['batchaccounttype'] = 'Account-Typ';
 $string['batchaccounttype_help'] = 'Vorläufige Accounts sind eingeschränkt und laufen ab; dauerhafte Accounts sind vollwertige Accounts (ihre E-Mail ist ein Platzhalter, bis Sie sie personalisieren).';
+$string['batchcleanupfailed'] = 'Ein bei der Bereitstellung erzeugtes Konto konnte nach einem Fehler nicht entfernt werden (Nutzer-ID {$a}). Bitte manuell prüfen.';
 $string['batchcol_email'] = 'E-Mail';
 $string['batchcol_firstname'] = 'Vorname';
 $string['batchcol_lastname'] = 'Nachname';

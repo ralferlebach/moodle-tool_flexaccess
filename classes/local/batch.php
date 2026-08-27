@@ -23,7 +23,7 @@ namespace tool_flexaccess\local;
  * usernames and passwords, enrolled into a target course through the FlexAccess enrol instance.
  * Plain passwords are never stored: they exist only in memory during creation and export. Passwords
  * can be re-issued via {@see reset_credentials()}, which rotates the password of every member that
- * is still batch-managed and skips any member that has been personalised/converted (P0-1).
+ * is still batch-managed and skips any member that has been personalised/converted.
  *
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -536,7 +536,7 @@ final class batch {
                         // Without this it would be invisible to the resumable batch, and a retry
                         // would create a second account instead of completing this one.
                         if ($userid > 0) {
-                            self::compensate_member($userid);
+                            self::compensate_member($batchid, $userid);
                         }
                         throw $e;
                     }
@@ -560,17 +560,51 @@ final class batch {
     /**
      * Undo a half-provisioned member so no orphaned account is left behind.
      *
-     * Best effort by design: if the rollback itself fails, the original error must still surface,
-     * because that is the one describing what actually went wrong.
+     * If the rollback itself fails, the original error must still surface - it is the one that
+     * describes what actually went wrong - but the leftover account is recorded rather than lost.
      *
+     * @param int $batchid Batch the member belongs to.
      * @param int $userid Account created for the member.
      * @return void
      */
-    private static function compensate_member(int $userid): void {
+    private static function compensate_member(int $batchid, int $userid): void {
+        $removed = false;
+        $reason = '';
         try {
             if (method_exists('\auth_flexaccess\api', 'rollback_batch_account')) {
-                \auth_flexaccess\api::rollback_batch_account($userid);
+                $removed = \auth_flexaccess\api::rollback_batch_account($userid);
             }
+        } catch (\Throwable $e) {
+            $reason = $e->getMessage();
+        }
+        if ($removed) {
+            return;
+        }
+        // Silently swallowing this would hide an account nobody can account for. Record it so the
+        // leftover is visible on the batch and can be cleaned up deliberately.
+        debugging(
+            "FlexAccess: konnte Konto $userid nach fehlgeschlagener Bereitstellung nicht entfernen. $reason",
+            DEBUG_NORMAL
+        );
+        self::note_cleanup_failure($batchid, $userid);
+    }
+
+    /**
+     * Note on the batch that a leftover account could not be removed.
+     *
+     * @param int $batchid Batch id.
+     * @param int $userid Account that remained.
+     * @return void
+     */
+    private static function note_cleanup_failure(int $batchid, int $userid): void {
+        global $DB;
+        try {
+            $DB->set_field(
+                self::TABLE,
+                'statusmessage',
+                get_string('batchcleanupfailed', 'tool_flexaccess', $userid),
+                ['id' => $batchid]
+            );
         } catch (\Throwable $ignored) {
             unset($ignored);
         }
@@ -601,7 +635,7 @@ final class batch {
      * Reset every still-managed member's password to a fresh value and return the new credentials.
      *
      * This is the secure way to issue login sheets: plain passwords are never persisted, so issuing
-     * always rolls new passwords. Members that have been personalised/converted are skipped (P0-1).
+     * always rolls new passwords. Members that have been personalised/converted are skipped.
      *
      * @param int $batchid Batch id.
      * @param int $passwordlength Password length.
@@ -611,7 +645,7 @@ final class batch {
         $credentials = [];
         foreach (self::members($batchid) as $member) {
             // Never rotate the password of a member that has left batch management (personalised /
-            // converted to a permanent account): doing so would be a credential takeover (P0-1).
+            // converted to a permanent account): doing so would be a credential takeover.
             // The stored flag is the authority; set_account_password() enforces the same rule again.
             if (!empty($member->converted)) {
                 continue;
