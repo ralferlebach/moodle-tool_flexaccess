@@ -39,6 +39,9 @@ final class batch {
     /** Hard upper bound on accounts requested in one batch. */
     private const MAX_SYNC_CREATE = 1000;
 
+    /** How often a generated password may be re-rolled to satisfy the site's password policy. */
+    private const PASSWORD_ATTEMPTS = 50;
+
     /** Accounts provisioned before committing progress, keeping each unit of work small. */
     public const PROVISION_CHUNK = 50;
 
@@ -370,14 +373,28 @@ final class batch {
      * @return string
      */
     public static function generate_password(int $length = 10): string {
-        $length = max(8, $length);
+        global $CFG;
+        // Respect the site's password policy. A generated password that the policy would reject
+        // leaves the account unusable the moment the user tries to change it, and silently
+        // undercuts a security setting the administrator deliberately made (for example a
+        // 12-character minimum, or required character classes).
+        $length = max(8, $length, (int) ($CFG->minpasswordlength ?? 8));
         $alphabet = self::PASS_ALPHABET;
         $max = strlen($alphabet) - 1;
-        $out = '';
-        for ($i = 0; $i < $length; $i++) {
-            $out .= $alphabet[random_int(0, $max)];
+        for ($attempt = 0; $attempt < self::PASSWORD_ATTEMPTS; $attempt++) {
+            $out = '';
+            for ($i = 0; $i < $length; $i++) {
+                $out .= $alphabet[random_int(0, $max)];
+            }
+            $errors = '';
+            if (!function_exists('check_password_policy') || check_password_policy($out, $errors)) {
+                return $out;
+            }
         }
-        return $out;
+        // The alphabet cannot satisfy this policy (for example it demands characters we never
+        // generate). Failing loudly is right: silently handing out a password the site rejects
+        // would produce accounts nobody can use.
+        throw new \moodle_exception('batchpasswordpolicy', 'tool_flexaccess');
     }
 
     /**
@@ -497,21 +514,32 @@ final class batch {
                 for ($i = 0; $i < $chunk; $i++) {
                     $username = self::unique_username($prefix);
                     $password = self::generate_password($passwordlength);
-                    $userid = \auth_flexaccess\api::create_batch_account(
-                        $username,
-                        $password,
-                        '',
-                        '',
-                        $permanent,
-                        $timeexpires,
-                        $now
-                    );
-                    \enrol_flexaccess\local\enrol_service::admin_enrol($courseid, $userid, !$permanent, $now);
-                    $DB->insert_record(self::MEMBER_TABLE, (object) [
-                        'batchid' => $batchid,
-                        'userid' => $userid,
-                        'username' => $username,
-                    ]);
+                    $userid = 0;
+                    try {
+                        $userid = \auth_flexaccess\api::create_batch_account(
+                            $username,
+                            $password,
+                            '',
+                            '',
+                            $permanent,
+                            $timeexpires,
+                            $now
+                        );
+                        \enrol_flexaccess\local\enrol_service::admin_enrol($courseid, $userid, !$permanent, $now);
+                        $DB->insert_record(self::MEMBER_TABLE, (object) [
+                            'batchid' => $batchid,
+                            'userid' => $userid,
+                            'username' => $username,
+                        ]);
+                    } catch (\Throwable $e) {
+                        // Per-member compensation: the account exists but nothing references it yet.
+                        // Without this it would be invisible to the resumable batch, and a retry
+                        // would create a second account instead of completing this one.
+                        if ($userid > 0) {
+                            self::compensate_member($userid);
+                        }
+                        throw $e;
+                    }
                     $credentials[$username] = $password;
                     $made++;
                 }
@@ -527,6 +555,25 @@ final class batch {
         $DB->set_field(self::TABLE, 'membercount', $existing, ['id' => $batchid]);
         $DB->set_field(self::TABLE, 'status', self::STATUS_COMPLETE, ['id' => $batchid]);
         return $credentials;
+    }
+
+    /**
+     * Undo a half-provisioned member so no orphaned account is left behind.
+     *
+     * Best effort by design: if the rollback itself fails, the original error must still surface,
+     * because that is the one describing what actually went wrong.
+     *
+     * @param int $userid Account created for the member.
+     * @return void
+     */
+    private static function compensate_member(int $userid): void {
+        try {
+            if (method_exists('\auth_flexaccess\api', 'rollback_batch_account')) {
+                \auth_flexaccess\api::rollback_batch_account($userid);
+            }
+        } catch (\Throwable $ignored) {
+            unset($ignored);
+        }
     }
 
     /**

@@ -86,6 +86,8 @@ final class invitation_mail_renderer {
         if (!$id || !invitation::get($id)) {
             return;
         }
+        // The token that went out in this mail becomes the live one only now, on confirmed delivery.
+        invitation::promote_pending_token($id);
         if ((string) ($context['kind'] ?? '') === self::KIND_REMINDER) {
             $invite = invitation::get($id);
             $DB->set_field('tool_flexaccess_invite', 'timereminded', $now, ['id' => $id]);

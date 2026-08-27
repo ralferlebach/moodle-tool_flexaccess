@@ -92,6 +92,7 @@ $string['batchname'] = 'Batch name';
 $string['batchnotreadyyet'] = 'This batch is still being created. Please wait until provisioning has finished before issuing credentials.';
 $string['batchopenincourse'] = 'Open in the course';
 $string['batchpasswordlength'] = 'Password length';
+$string['batchpasswordpolicy'] = 'No password could be generated that satisfies this site\'s password policy. Please relax the policy or contact the administrator.';
 $string['batchprogress'] = '{$a->done} of {$a->total}';
 $string['batchrequest'] = 'FlexAccess: access list requested';
 $string['batchrequestbody'] = '{$a->requester} has requested an anonymous access list of {$a->count} accounts for the course "{$a->course}". Use the link to create it.';

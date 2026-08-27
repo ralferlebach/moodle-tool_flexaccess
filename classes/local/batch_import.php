@@ -245,7 +245,10 @@ final class batch_import {
         foreach ($rows as $row) {
             $processed++;
             if ($processed % self::CONVERT_CHUNK === 0) {
-                batch::report_convert_progress($batchid, $converted);
+                // Progress counts PROCESSED rows, not just successful ones: an import where most
+                // rows are skipped would otherwise appear stuck at a low number while it is in fact
+                // nearly finished.
+                batch::report_convert_progress($batchid, $processed);
             }
             $username = $row['username'];
             $member = $members[$username] ?? null;

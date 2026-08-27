@@ -162,9 +162,35 @@ final class invitation {
         do {
             $token = self::generate_token();
             $hash = self::hash_token($token);
-        } while ($DB->record_exists(self::TABLE, ['tokenhash' => $hash]));
-        $DB->set_field(self::TABLE, 'tokenhash', $hash, ['id' => $id]);
+        } while (
+            $DB->record_exists(self::TABLE, ['tokenhash' => $hash])
+                || $DB->record_exists(self::TABLE, ['pendingtokenhash' => $hash])
+        );
+        // Parked, not activated: a resend must not invalidate a link that already works. The new
+        // token only replaces the live one once the mail has actually been delivered - otherwise a
+        // failed resend would leave the recipient with a link that stopped working for nothing, and
+        // several queued jobs would each kill the previous mail's link (P0-2).
+        $DB->set_field(self::TABLE, 'pendingtokenhash', $hash, ['id' => $id]);
         return $token;
+    }
+
+    /**
+     * Activate the parked token after its mail was actually delivered.
+     *
+     * From this moment the previously delivered link stops working - which is correct, because the
+     * recipient now holds a newer one.
+     *
+     * @param int $id Invitation id.
+     * @return void
+     */
+    public static function promote_pending_token(int $id): void {
+        global $DB;
+        $invite = self::get($id);
+        if (!$invite || empty($invite->pendingtokenhash)) {
+            return;
+        }
+        $DB->set_field(self::TABLE, 'tokenhash', $invite->pendingtokenhash, ['id' => $id]);
+        $DB->set_field(self::TABLE, 'pendingtokenhash', null, ['id' => $id]);
     }
 
     /**
@@ -375,12 +401,21 @@ final class invitation {
             // that would persist the token. Nothing is sent and the caller is told.
             return false;
         }
+        // De-duplicate: an identical job still waiting in the queue would send a second mail and,
+        // worse, park a second token - each delivery invalidating the previous link.
+        $jobcontext = ['invitationid' => (int) $invite->id, 'kind' => $kind];
+        if (
+            method_exists('\auth_flexaccess\api', 'deferred_mail_queued')
+                && \auth_flexaccess\api::deferred_mail_queued(invitation_mail_renderer::class, $jobcontext)
+        ) {
+            return true;
+        }
         return (bool) \auth_flexaccess\api::queue_deferred_mail(
             null,
             $invite->email,
             'invite',
             invitation_mail_renderer::class,
-            ['invitationid' => (int) $invite->id, 'kind' => $kind],
+            $jobcontext,
             $now,
             $now
         );

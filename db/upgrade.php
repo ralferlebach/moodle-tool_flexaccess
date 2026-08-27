@@ -261,5 +261,16 @@ function xmldb_tool_flexaccess_upgrade($oldversion) {
         }
         upgrade_plugin_savepoint(true, 2026082427, 'tool', 'flexaccess');
     }
+    if ($oldversion < 2026082434) {
+        $dbman = $DB->get_manager();
+        // A resend must not destroy a link that already works: the newly minted token is parked here
+        // and only replaces the live one once the mail has actually been delivered (P0-2).
+        $table = new xmldb_table('tool_flexaccess_invite');
+        $field = new xmldb_field('pendingtokenhash', XMLDB_TYPE_CHAR, '64', null, null, null, null, 'tokenhash');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        upgrade_plugin_savepoint(true, 2026082434, 'tool', 'flexaccess');
+    }
     return true;
 }

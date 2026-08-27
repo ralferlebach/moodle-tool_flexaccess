@@ -92,6 +92,7 @@ $string['batchname'] = 'Stapelname';
 $string['batchnotreadyyet'] = 'Dieser Batch wird noch erstellt. Bitte warten Sie das Ende der Bereitstellung ab, bevor Sie Zugangsdaten ausstellen.';
 $string['batchopenincourse'] = 'Im Kurs öffnen';
 $string['batchpasswordlength'] = 'Passwortlänge';
+$string['batchpasswordpolicy'] = 'Es konnte kein Passwort erzeugt werden, das die Passwortrichtlinie dieser Website erfüllt. Bitte lockern Sie die Richtlinie oder wenden Sie sich an die Administration.';
 $string['batchprogress'] = '{$a->done} von {$a->total}';
 $string['batchrequest'] = 'FlexAccess: Zugangsliste angefordert';
 $string['batchrequestbody'] = '{$a->requester} hat für den Kurs „{$a->course}" eine anonyme Zugangsliste mit {$a->count} Konten angefordert. Über den Link können Sie sie erstellen.';
