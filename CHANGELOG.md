@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.0-RC1 — 2026-08-27 — Release Candidate 1
+- Version `2026082700`, Release `1.0.0-RC1`, Reifegrad `MATURITY_STABLE`.
+- Die Abhängigkeiten der vier Plugins verlangen ebenfalls `2026082700`: Sie sind nur in diesem gemeinsamen Stand lauffähig.
+- **Neue `README.md`** nach dem Muster von Moodle an Hochschulen, mit den tatsächlichen Angaben dieses Plugins: Voraussetzungen, Motivation, Installation, Einstellungen, Capabilities, geplante Aufgaben, Funktionsweise samt Stolperfallen sowie Hinweise zu Support, Übersetzung und Pflege.
+
 ## 0.9.63 — 2026-08-27 — Zugangslisten: Kärtchen, Freitext, Einmal-Ausgabe
 - **Kärtchen-Layout schnittgerecht.** Der Abstand zwischen zwei Karten ist doppelt so groß wie der Seitenrand (8 mm), sodass Halbieren und nochmaliges Halbieren der Seite bei jeder Karte denselben Rand ergibt. Nachgerechnet: alle Schnittkanten liegen exakt 8 mm von beiden angrenzenden Karten und von allen vier Seitenrändern entfernt; Kartenformat 89 × 58,25 mm.
 - **Keine Überlagerungen mehr.** Beschriftung steht jetzt *über* dem Wert statt daneben, sodass auch lange Anmeldenamen die volle Breite haben. Die Textspalte hält Abstand zum QR-Code.
