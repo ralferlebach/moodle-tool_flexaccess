@@ -69,6 +69,17 @@ async function openAndVerify(page, url, heading) {
 
 
 
+/**
+ * Log in through the standard Moodle login form so the administrative pages can be reached.
+ *
+ * @param {import('@playwright/test').Page} page The page under test.
+ * @returns {Promise<void>}
+ */
+async function loginAsManager(page) {
+  await loginAs(page, MANAGER_USER, MANAGER_PASS);
+  await page.waitForLoadState('domcontentloaded');
+}
+
 test.describe('FlexAccess administrative pages accessibility', () => {
     // Skip (never fail) when the seed did not provide credentials, so the gate cannot go red for
     // reasons unrelated to accessibility.

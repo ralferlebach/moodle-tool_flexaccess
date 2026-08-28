@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0-RC1 — 2026-08-27 — Browsersuiten: zwei Fehler behoben, Artefakte nach Ergebnis getrennt
+- **`ReferenceError: loginAsManager is not defined`.** Beim Aufteilen der Barrierefreiheitsprüfung ist die Hilfsfunktion im auth-Teil geblieben, ihr Aufruf aber in den tool-Teil gewandert. Sie steht jetzt dort, wo sie gebraucht wird.
+- **Falsche Beschriftung im Aktivierungstest.** Der Test erwartete „Make my account permanent" — die Aktivität beschriftet ihre Schaltfläche aber mit „Activate my account" (Sprachstring `sasubmit`). Alle in den Suiten erwarteten Beschriftungen wurden gegen die englischen Sprachdateien gegengeprüft.
+- **Artefakte hängen jetzt am Ergebnis.** Bei einem grünen Lauf wird der vollständige Bericht **mit** Videos abgelegt (`playwright-report-with-videos`). Bei einem roten Lauf wird stattdessen nur eingesammelt, was tatsächlich fehlgeschlagen ist, und ohne Videos (`playwright-failures`) — an einem echten Bericht gemessen: **14 MB → 324 KB** bei vollständig erhaltenen Screenshots und Traces.
+
+## 1.0.0-RC1 — 2026-08-27 — Falscher @package-Tag in der kopierten Fixture-Datei
+- **`@package` in `tests/playwright/seed.php` korrigiert.** Die Datei stammt aus `enrol_flexaccess` und trug beim Kopieren dessen Tag weiter; `moodle-cs` weist das als Fehler zurück (`moodle.Commenting.Package.Incorrect`). Alle PHP-Dateien der vier Plugins wurden gegengeprüft — keine weitere Abweichung.
+
 ## 1.0.0-RC1 — 2026-08-27 — Eigene Browser-Testsuite je Plugin
 - **Jedes Plugin bringt jetzt seine eigene Playwright-Suite mit** (`tests/playwright/`), statt dass alle vier dieselbe Suite aus `enrol_flexaccess` ausführen. Jede Suite prüft die Handlungen, für die *ihr* Plugin zuständig ist, und jedes Repository steht damit für sich.
 - Gemeinsame Helfer liegen als `helpers.js` in jedem Plugin — bewusst als Kopie: Ein geteiltes Paket würde die vier Repositories auch auf Testebene aneinanderbinden.
