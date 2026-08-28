@@ -1,5 +1,20 @@
 # Backlog
 
+## Stand nach Session 002 (1.0.0-RC1 / 2026082700)
+
+Erledigt in dieser Sitzung: sämtliche P0- und P1-Punkte der Reviews zu 0.9.35, 0.9.51 und 0.9.61.
+Einzelheiten in `docs/sessions/session-002.md`.
+
+Offen bis `MATURITY_STABLE`:
+
+- [ ] Mailqueue-Adminsicht um `ackpending` und `ackfailed` erweitern, mit Reparaturweg für den
+      Quittungsfehler und Aufbewahrungsregel für terminale Zeilen.
+- [ ] jMeter: Durchsatzmessung und Rate-Limit-Prüfung als getrennte Szenarien.
+- [ ] Browser-Abdeckung um den produktionsnahen E-Mail-Verifikationsablauf ergänzen.
+- [ ] Optional: Reconciliation-Task für Konten, deren Kompensation fehlschlug.
+- [ ] Abschließende Produktivfreigabe durch den Reviewer, danach `MATURITY_STABLE`.
+
+
 - [ ] Implement public account query/search facade in auth_flexaccess.
 - [ ] Implement account detail page and DTO.
 - [ ] Implement admin conversion/suspension/deletion command orchestration.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.0-RC1 — 2026-08-27 — `db/removed_files.txt` nicht mehr im Auslieferungspaket
+- **Die Liste entfernter Dateien wird nicht mehr mit ausgeliefert** (`export-ignore`). Sie ist ausschließlich repo-seitig von Bedeutung: Moodles ZIP-Installation ersetzt das Plugin-Verzeichnis vollständig, eine Altdatei kann sie also gar nicht überleben. Nur beim Aktualisieren eines Repositories an Ort und Stelle bleibt eine entfernte Datei liegen — genau dafür liest der CI-Job `stale-files` die Liste weiterhin aus dem Repository.
+
+## 1.0.0-RC1 — 2026-08-27 — Serverlog im Fehlerpaket
+- **Das vollständige Serverlog liegt dem Fehlerpaket bei**, gzip-komprimiert (`moodle-server.log.gz`). Im Job-Protokoll erscheinen weiterhin nur die letzten 100 Zeilen — der Rest ist dort ohnehin nicht lesbar, wächst aber schnell auf eine Größe, die den Download unhandlich macht. An einem Beispiellauf gemessen: 492 KB roh, 4 KB gepackt.
+- Der Schritt läuft **nach** dem Einsammeln der Fehlerverzeichnisse: Dieses leert das Zielverzeichnis zuerst und hätte ein vorher abgelegtes Log wieder entfernt.
+
 ## 1.0.0-RC1 — 2026-08-27 — Browsersuiten: zwei Fehler behoben, Artefakte nach Ergebnis getrennt
 - **`ReferenceError: loginAsManager is not defined`.** Beim Aufteilen der Barrierefreiheitsprüfung ist die Hilfsfunktion im auth-Teil geblieben, ihr Aufruf aber in den tool-Teil gewandert. Sie steht jetzt dort, wo sie gebraucht wird.
 - **Falsche Beschriftung im Aktivierungstest.** Der Test erwartete „Make my account permanent" — die Aktivität beschriftet ihre Schaltfläche aber mit „Activate my account" (Sprachstring `sasubmit`). Alle in den Suiten erwarteten Beschriftungen wurden gegen die englischen Sprachdateien gegengeprüft.

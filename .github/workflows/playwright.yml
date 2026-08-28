@@ -175,7 +175,7 @@ jobs:
           fi
           npm test
 
-      - name: Show server log on failure
+      - name: Show the tail of the server log on failure
         if: failure()
         run: tail -100 /tmp/moodle-server.log || true
 
@@ -207,6 +207,23 @@ jobs:
             ls -1 "$dest"
           else
             echo "Keine Fehlerverzeichnisse gefunden."
+          fi
+
+      # The complete log goes into the failure bundle rather than the job output: a request log of
+      # a full browser run is long, and only its end is readable inline. It is compressed because
+      # such logs grow quickly - on a larger project far beyond what is comfortable to download.
+      #
+      # Placed AFTER the collecting step, which clears the directory first.
+      - name: Add the server log to the failure bundle
+        if: failure()
+        run: |
+          dest="$RUNNER_TEMP/playwright-failures"
+          mkdir -p "$dest"
+          if [ -s /tmp/moodle-server.log ]; then
+            gzip -c /tmp/moodle-server.log > "$dest/moodle-server.log.gz"
+            echo "Serverlog beigelegt ($(du -h /tmp/moodle-server.log | cut -f1) unkomprimiert)."
+          else
+            echo "Kein Serverlog vorhanden."
           fi
 
       - name: Upload failures only
