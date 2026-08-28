@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.0-RC1 — 2026-08-27 — Eigene Browser-Testsuite je Plugin
+- **Jedes Plugin bringt jetzt seine eigene Playwright-Suite mit** (`tests/playwright/`), statt dass alle vier dieselbe Suite aus `enrol_flexaccess` ausführen. Jede Suite prüft die Handlungen, für die *ihr* Plugin zuständig ist, und jedes Repository steht damit für sich.
+- Gemeinsame Helfer liegen als `helpers.js` in jedem Plugin — bewusst als Kopie: Ein geteiltes Paket würde die vier Repositories auch auf Testebene aneinanderbinden.
+- Jedes Plugin hat ein eigenes `seed.php`, das genau das Fixture erzeugt, das seine Suite braucht.
+- **Zwei Fehler dabei gefunden und behoben:** Das Kurskürzel im Fixture nutzte `time()` — zwei Läufe innerhalb derselben Sekunde kollidierten und der Kurs konnte nicht angelegt werden. Und der Pfad zur `config.php` stimmt bei `tool`-Plugins nicht, weil sie eine Ebene tiefer liegen (`admin/tool/<name>`).
+- Die Testsuiten bleiben wie bisher aus dem Installationspaket ausgeschlossen.
+
+- Inhalt: Übersicht und Kontenliste, Mailqueue, Richtlinien, Einladung anlegen, Zugangsliste anlegen, Kampagne anlegen (samt Nachweis, dass der Link nur einmal erscheint), Batch-Liste sowie die Barrierefreiheitsprüfung der Administrationsseiten (7 Tests).
+
+## 1.0.0-RC1 — 2026-08-27 — Playwright-Artefakte
+- **Artefaktpfad korrigiert:** Der Upload zeigte auf das eigene Plugin-Verzeichnis, in dem keine Testsuite liegt — aus diesem Repository gab es deshalb nie Artefakte. Er verweist jetzt auf `enrol_flexaccess/tests/playwright`, wo die gemeinsame Suite ausgeführt wird.
+- **Zwei Artefakte je Lauf:** einmal ohne Videos (Screenshots, Traces, Bericht) und einmal mit allem.
+
 ## 1.0.0-RC1 — 2026-08-27 — Rollenwechsel wurde bei den Zugangslisten nicht beachtet
 - **Beim Wechsel in die Rolle „Teilnehmer/in" blieb der Eintrag „Anonyme Zugangslisten" sichtbar, und die Seite ließ sich öffnen.** Ursache: Zwei kursbezogene Entscheidungen fragten die Berechtigung `managebatches` im **Systemkontext** ab. Moodle setzt die Administrator-Umgehung beim Rollenwechsel nur für den gewechselten Kontext aus — eine Frage an den Systemkontext wurde deshalb weiterhin mit „ja" beantwortet. Alle Prüfungen laufen jetzt im **Kurskontext**; eine auf Systemebene zugewiesene Rolle greift dort weiterhin, weil Berechtigungsprüfungen den Kontextpfad nach oben durchlaufen.
 - **Einordnung:** Es handelt sich um eine falsche Vorschau, nicht um eine Rechteausweitung — betroffen waren ausschließlich Konten, die den Zugang ohnehin besitzen (Website-Administration bzw. Manager/innen mit systemweiter Berechtigung). Für Teilnehmende und Trainer/innen ohne Bearbeitungsrecht war der Zugang zu keinem Zeitpunkt möglich.
