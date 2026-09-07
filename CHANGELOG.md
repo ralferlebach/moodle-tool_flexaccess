@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.0-RC2 — 2026-08-28 — Versions-Gleichschritt
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082701`.
+
 ## 1.0.0-RC1 — 2026-08-27 — `db/removed_files.txt` nicht mehr im Auslieferungspaket
 - **Die Liste entfernter Dateien wird nicht mehr mit ausgeliefert** (`export-ignore`). Sie ist ausschließlich repo-seitig von Bedeutung: Moodles ZIP-Installation ersetzt das Plugin-Verzeichnis vollständig, eine Altdatei kann sie also gar nicht überleben. Nur beim Aktualisieren eines Repositories an Ort und Stelle bleibt eine entfernte Datei liegen — genau dafür liest der CI-Job `stale-files` die Liste weiterhin aus dem Repository.
 
