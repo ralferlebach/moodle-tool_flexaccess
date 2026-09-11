@@ -1,7 +1,7 @@
 moodle-tool_flexaccess
 ======================
 
-[![Moodle Plugin CI](https://github.com/ralferlebach/moodle-tool_flexaccess/actions/workflows/moodle-plugin-ci-main.yml/badge.svg?branch=main)](https://github.com/ralferlebach/moodle-tool_flexaccess/actions?query=workflow%3A%22Moodle+Plugin+CI+Main%22+branch%3Amain)
+[![Moodle Plugin CI](https://github.com/ralferlebach/moodle-tool_flexaccess/actions/workflows/moodle-plugin-ci-main.yml/badge.svg?branch=main)](https://github.com/ralferlebach/moodle-tool_flexaccess/actions?query=workflow%3A%22Moodle+Plugin+CI+Main%22+branch%3Amain) [![FlexAccess: Admin tool](https://img.shields.io/badge/FlexAccess-Admin%20tool-0f6cbf)](https://github.com/ralferlebach/moodle-enrol_flexaccess)
 
 FlexAccess administration is the operator's view of the FlexAccess plugin set: account overview, mail queue, policies, invitations, campaigns and printable anonymous access lists.
 
@@ -28,7 +28,7 @@ Requirements
 This plugin requires Moodle 4.5+
 
 It also requires the other FlexAccess plugins. All four are released together and must be installed
-in the same version (currently 1.0.0-RC1 / 2026082700):
+in the same version (currently 1.0.0 / 2026091100):
 
 * **auth_flexaccess (FlexAccess authentication)** - required dependency, declared in version.php\
   https://github.com/ralferlebach/moodle-auth_flexaccess
