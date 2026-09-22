@@ -75,11 +75,20 @@ if ($hassiteconfig) {
         'tool/flexaccess:managebatches'
     ));
 
-    // Also surface the dashboard under Users > User accounts, where account-oriented admins look.
+    $ADMIN->add('tool_flexaccess_category', new admin_externalpage(
+        'tool_flexaccess_status',
+        get_string('tabstatus', 'tool_flexaccess'),
+        new moodle_url('/admin/tool/flexaccess/status.php'),
+        'tool/flexaccess:viewsystemstatus'
+    ));
+
+    // The existing entry under Users > User accounts leads to the central FlexAccess user view (not
+    // a duplicate page): the same table the course view uses, with the site-wide filters and batch
+    // recovery. The admin page id is kept so existing bookmarks keep working.
     $ADMIN->add('accounts', new admin_externalpage(
         'tool_flexaccess_dashboard_accounts',
         get_string('pluginname', 'tool_flexaccess'),
-        new moodle_url('/admin/tool/flexaccess/index.php'),
-        'tool/flexaccess:viewdashboard'
+        new moodle_url('/admin/tool/flexaccess/accounts.php'),
+        'tool/flexaccess:viewaccounts'
     ));
 }

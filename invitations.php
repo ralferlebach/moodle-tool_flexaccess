@@ -109,6 +109,7 @@ if ($action === 'new') {
     }
     echo $OUTPUT->header();
     echo $OUTPUT->heading(get_string('invitecreate', 'tool_flexaccess'));
+    echo \tool_flexaccess\local\navigation::render_system(\tool_flexaccess\local\navigation::OUTREACH, 'invitations');
     $form->display();
     echo $OUTPUT->footer();
     die;
@@ -116,6 +117,7 @@ if ($action === 'new') {
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('invitations', 'tool_flexaccess'));
+echo \tool_flexaccess\local\navigation::render_system(\tool_flexaccess\local\navigation::OUTREACH, 'invitations');
 echo html_writer::tag('p', get_string('invitations_intro', 'tool_flexaccess'));
 echo $OUTPUT->single_button(
     new moodle_url($returnurl, ['action' => 'new']),

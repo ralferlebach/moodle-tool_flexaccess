@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.1.0 — 2026-09-22 — Reiterstruktur, Nutzerverwaltung auf Kurs- und Systemebene, Recovery, Systemstatus
+- **Einheitliche Reiter (Issue #4).** Alle Verwaltungsseiten tragen dieselbe Reiterleiste an derselben Stelle:
+  - Übersicht, Nutzer, Zugangslisten
+  - Einladungen & Kampagnen (mit Unterreitern)
+  - Richtlinien (Übersicht / Verwalten)
+  - Systemstatus (Systemprüfung / Mail-Warteschlange)
+- **Reiter nach Rechten.** Die Definition liegt zentral in `local\navigation`, und ein Reiter erscheint nur mit dem passenden Leserecht. Bestehende URLs bleiben erhalten, Deep Links funktionieren weiter.
+- **Übersicht** zeigt zusätzlich offene Verifikationen, auf ein Passwort wartende Konten, abgelaufene oder gesperrte Konten und Systemwarnungen, jeweils verlinkt auf den passenden Filter.
+- **Kurs → Mehr → FlexAccess (Issue #5).** Ein Einstieg in die kursbezogene Verwaltung mit den Reitern Nutzer, Zugangslisten und Restriktionen. Er zeigt Konto- und Kurszugangsstatus gemeinsam, mit einer zusammengefassten Diagnose, etwa „Account aktiv, Kurszugang suspendiert“.
+- **Nutzer auf Systemebene.** Die Nutzerverwaltung bietet dieselbe Tabelle wie die Kursansicht (gemeinsamer Presenter) und dazu Filter: provisorisch, abgelaufen, wartet auf Passwort, gesperrter Moodle-Nutzer, suspendierter Kurszugang, Verifikation offen. Dazu kommen Mehrfachauswahl und ein Drill-down je Nutzer (`user.php`). Der Eintrag unter *Nutzer/innen → Nutzerkonten* führt jetzt auf diese Ansicht.
+- **Recovery eingefrorener Konten (Issue #3).** Auf Vorschau und Bestätigung folgt ein Ergebnis je Nutzer; das funktioniert einzeln und im Batch, pro Kurs und systemweit. Dabei gilt:
+  - Ein abgelaufenes Konto mit offener Verifikation kehrt nach PROVISIONAL zurück und erhält eine neue Verifikationsmail. Es wird nie direkt ACTIVE.
+  - Kurszugänge werden nur reaktiviert, wo sie ausdrücklich angehakt sind.
+  - Eine entfernte Einschreibung wird nur über die gesonderte Neueinschreibung wiederhergestellt; dafür gibt es ein eigenes Recht.
+  - Jeder Nutzer wird atomar verarbeitet; jede Recovery landet mit altem und neuem Zustand und den Einschreibungsänderungen im Event-Log (`account_recovered`).
+- **Neue Rechte:** `viewcourseusers`, `recovercourse`, `reenrol`, `recoversystem`, `viewsystemstatus`, `repairsystem`.
+- **Systemstatus (Issue #6).** Die Systemprüfung umfasst:
+  - Installation, Upgrade-Stand, Aktivierung und Abhängigkeiten der Plugins
+  - das Rollenmodell
+  - Konto- und Rolleninvarianten
+  - geplante Aufgaben (vorhanden, aktiv, überfällig)
+  - Policy-Konflikte mit Link zur Kursinstanz
+  - den Mail-Funnel, in dem fehlgeschlagene Verifikations- und Passwort-Mails als Fehler vorangestellt werden
+- **Sichere Reparaturen:** Rollen neu anlegen, fehlende Restriktion ergänzen, veraltete Restriktion aktiver Konten entfernen, verwaiste Restriktion entfernen, abgelaufene Konten wieder sperren. Jede Reparatur zeigt vorher eine Vorschau, verlangt eine Bestätigung per POST, Sitzungsschlüssel und das Recht `repairsystem` und wird protokolliert (`health_repaired`). Keine Reparatur gewährt Zugang oder verändert Einschreibungen.
+- `convert.php` liest das Konto über die auth-API statt direkt aus deren Tabelle und weist auf den neuen Passwort-Vorgang hin.
+- Playwright-Barrierefreiheitsprüfung um Kurs-Nutzeransicht, Nutzerverwaltung und Systemstatus erweitert.
+- Reifegrad `MATURITY_STABLE`, Version `2026092201`, Release `1.1.0`. Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026092201`.
+
 ## 1.0.0 — 2026-09-11 — Erste stabile Freigabe
 - Reifegrad `MATURITY_STABLE`, Version `2026091100`, Release `1.0.0`.
 - **README:** Neben dem CI-Badge steht jetzt ein FlexAccess-Badge mit dem Plugin-Typ, das auf das Hauptplugin `enrol_flexaccess` verweist. Die genannte Verbundversion wurde nachgezogen.

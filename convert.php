@@ -43,7 +43,8 @@ $PAGE->set_pagelayout('admin');
 $PAGE->set_title(get_string('convertheading', 'tool_flexaccess'));
 $PAGE->set_heading(get_string('pluginname', 'tool_flexaccess'));
 
-$account = $DB->get_record('auth_flexaccess_account', ['userid' => $userid]);
+// Read through the owning plugin's facade, never its table.
+$account = \auth_flexaccess\api::get_account($userid);
 if (!$account || $account->accounttype !== \auth_flexaccess\local\account_type::TEMPORARY_USER) {
     redirect(
         $accountsurl,
@@ -86,5 +87,7 @@ if ($data = $form->get_data()) {
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('convertheading', 'tool_flexaccess'));
+echo \tool_flexaccess\local\navigation::render_system(\tool_flexaccess\local\navigation::USERS);
+echo html_writer::tag('p', get_string('convertpendingnote', 'tool_flexaccess'));
 $form->display();
 echo $OUTPUT->footer();

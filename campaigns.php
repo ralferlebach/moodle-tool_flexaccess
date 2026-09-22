@@ -55,6 +55,7 @@ if ($action === 'confirmdelete' && $id > 0) {
         redirect($returnurl);
     }
     echo $OUTPUT->header();
+    echo \tool_flexaccess\local\navigation::render_system(\tool_flexaccess\local\navigation::OUTREACH, 'campaigns');
     echo $OUTPUT->confirm(
         get_string('campaigndeleteconfirm', 'tool_flexaccess', format_string($campaign->name)),
         new single_button(new moodle_url($returnurl, ['action' => 'delete', 'id' => $id]), get_string('delete'), 'post'),
@@ -86,6 +87,7 @@ if ($action === 'confirmrotate' && $id > 0) {
         redirect($returnurl);
     }
     echo $OUTPUT->header();
+    echo \tool_flexaccess\local\navigation::render_system(\tool_flexaccess\local\navigation::OUTREACH, 'campaigns');
     echo $OUTPUT->confirm(
         get_string('campaignrotateconfirm', 'tool_flexaccess', format_string($campaign->name)),
         new single_button(new moodle_url($returnurl, ['action' => 'rotate', 'id' => $id]), get_string('continue'), 'post'),
@@ -145,6 +147,7 @@ if ($form->is_cancelled()) {
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('campaigns', 'tool_flexaccess'));
+echo \tool_flexaccess\local\navigation::render_system(\tool_flexaccess\local\navigation::OUTREACH, 'campaigns');
 
 if ($editing) {
     $form->display();

@@ -68,6 +68,7 @@ if (!$confirm) {
     $PAGE->set_title(get_string('batchissuecredentials', 'tool_flexaccess'));
     $PAGE->set_heading(format_string($batch->name));
     echo $OUTPUT->header();
+    echo \tool_flexaccess\local\navigation::render_accesslist($courseid);
     // Issuing rotates passwords, so it must be a POST: a state-changing GET can be triggered by a
     // prefetch, a crawler or a pasted link and would silently invalidate handed-out credentials.
     // single_button renders the URL parameters as hidden fields and adds the sesskey itself.

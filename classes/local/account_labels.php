@@ -58,6 +58,7 @@ final class account_labels {
             'active' => 'accountstate_active',
             'expired' => 'accountstate_expired',
             'suspended' => 'accountstate_suspended',
+            'pendingcredential' => 'accountstate_pendingcredential',
         ];
         return isset($map[$value]) ? get_string($map[$value], 'tool_flexaccess') : $value;
     }

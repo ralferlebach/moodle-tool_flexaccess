@@ -42,6 +42,7 @@ $baseurl = new moodle_url('/admin/tool/flexaccess/mailqueue.php', ['status' => $
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('mailqueue', 'tool_flexaccess'));
+echo \tool_flexaccess\local\navigation::render_system(\tool_flexaccess\local\navigation::STATUS, 'mailqueue');
 
 $summary = \auth_flexaccess\api::mailqueue_summary();
 echo html_writer::tag('p', get_string('mqsummary', 'tool_flexaccess', (object) [

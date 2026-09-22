@@ -92,8 +92,16 @@ if ($form->is_cancelled()) {
         ], getremoteaddr(), null, true);
         if ($result->status === 'granted' || $result->status === 'verificationsent') {
             invitation::commit_acceptance((int) $reserved->id);
-            $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);
-            complete_user_login($user);
+            // Session creation goes through the central FlexAccess login guard, never directly.
+            $channel = \auth_flexaccess\local\login_guard::CHANNEL_ENTRY;
+            if (!\auth_flexaccess\api::complete_login((int) $result->userid, $channel)) {
+                redirect(
+                    $courseurl,
+                    get_string('accessloginrefused', 'auth_flexaccess'),
+                    null,
+                    \core\output\notification::NOTIFY_ERROR
+                );
+            }
             $message = $result->status === 'verificationsent'
                 ? get_string('registerverificationsent', 'auth_flexaccess')
                 : get_string('registersuccess', 'auth_flexaccess');

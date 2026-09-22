@@ -41,6 +41,7 @@ $PAGE->set_heading(get_string('pluginname', 'tool_flexaccess'));
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('policies', 'tool_flexaccess'));
+echo \tool_flexaccess\local\navigation::render_system(\tool_flexaccess\local\navigation::POLICIES, 'policyoverview');
 echo html_writer::tag('p', get_string('policiesintro', 'tool_flexaccess'));
 
 if ($courseid > 0 && class_exists('\\enrol_flexaccess\\api')) {

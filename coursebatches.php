@@ -74,6 +74,7 @@ if ($action === 'new' && $cancreate) {
     }
     echo $OUTPUT->header();
     echo $OUTPUT->heading(get_string('batchcreate', 'tool_flexaccess'));
+    echo \tool_flexaccess\local\navigation::render_course($courseid, navigation::ACCESSLISTS);
     $form->display();
     echo $OUTPUT->footer();
     return;
@@ -98,6 +99,7 @@ if ($action === 'request' && !$cancreate) {
     }
     echo $OUTPUT->header();
     echo $OUTPUT->heading(get_string('coursebatches_request', 'tool_flexaccess'));
+    echo \tool_flexaccess\local\navigation::render_course($courseid, navigation::ACCESSLISTS);
     $form->display();
     echo $OUTPUT->footer();
     return;
@@ -105,6 +107,7 @@ if ($action === 'request' && !$cancreate) {
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('coursebatches', 'tool_flexaccess'));
+echo \tool_flexaccess\local\navigation::render_course($courseid, navigation::ACCESSLISTS);
 echo html_writer::tag('p', get_string('coursebatches_intro', 'tool_flexaccess'));
 
 echo html_writer::start_div('mb-3');

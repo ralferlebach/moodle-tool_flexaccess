@@ -36,6 +36,7 @@ $PAGE->set_heading(get_string('pluginname', 'tool_flexaccess'));
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('dashboard', 'tool_flexaccess'));
+echo \tool_flexaccess\local\navigation::render_system(\tool_flexaccess\local\navigation::OVERVIEW);
 
 // The dashboard aggregates data owned by the auth_flexaccess sibling plugin. If that plugin is not
 // installed (for example during isolated CI), degrade gracefully instead of throwing.
@@ -50,12 +51,18 @@ $mail = \auth_flexaccess\api::mailqueue_summary();
 
 $accounttable = new html_table();
 $accounttable->caption = get_string('dashaccounts', 'tool_flexaccess');
+$usersurl = static fn(string $filter): moodle_url => new moodle_url('/admin/tool/flexaccess/accounts.php', ['filter' => $filter]);
+$pendingcredential = \auth_flexaccess\api::count_accounts('', null, 'pendingcredential');
+$verification = \auth_flexaccess\api::count_accounts('', null, null, null, 'verificationpending');
+$locked = \auth_flexaccess\api::count_accounts('', null, 'expired') + \auth_flexaccess\api::count_accounts('', null, 'suspended');
 $accounttable->data = [
     [get_string('dashtotal', 'tool_flexaccess'), $stats['total']],
     [get_string('accounttypetemporary', 'tool_flexaccess'), $stats['temporary']],
     [get_string('accounttypeauthenticated', 'tool_flexaccess'), $stats['authenticated']],
-    [get_string('dashprovisional', 'tool_flexaccess'), $stats['provisional']],
-    [get_string('dashexpired', 'tool_flexaccess'), $stats['expired']],
+    [get_string('dashprovisional', 'tool_flexaccess'), html_writer::link($usersurl('provisional'), $stats['provisional'])],
+    [get_string('dashverificationpending', 'tool_flexaccess'), html_writer::link($usersurl('verificationpending'), $verification)],
+    [get_string('dashpendingcredential', 'tool_flexaccess'), html_writer::link($usersurl('pendingcredential'), $pendingcredential)],
+    [get_string('dashlocked', 'tool_flexaccess'), html_writer::link($usersurl('expired'), $locked)],
 ];
 echo html_writer::table($accounttable);
 
@@ -70,15 +77,21 @@ $mailtable->data = [
 ];
 echo html_writer::table($mailtable);
 
-echo html_writer::div(
-    html_writer::link(
-        new moodle_url('/admin/tool/flexaccess/accounts.php'),
-        get_string('accounts', 'tool_flexaccess')
-    ) . ' | ' .
-    html_writer::link(
-        new moodle_url('/admin/tool/flexaccess/mailqueue.php'),
-        get_string('mailqueue', 'tool_flexaccess')
-    )
-);
+// System warnings: a compact summary of the system status for those who may read it.
+if (has_capability('tool/flexaccess:viewsystemstatus', $context)) {
+    $warnings = [];
+    foreach (\tool_flexaccess\local\health::run() as $items) {
+        foreach ($items as $item) {
+            if (in_array($item->status, [\tool_flexaccess\local\health::WARNING, \tool_flexaccess\local\health::ERROR], true)) {
+                $warnings[] = s($item->label);
+            }
+        }
+    }
+    echo $OUTPUT->heading(get_string('dashwarnings', 'tool_flexaccess'), 3);
+    echo $warnings
+        ? html_writer::alist(array_slice($warnings, 0, 10))
+        : html_writer::tag('p', get_string('dashwarningsnone', 'tool_flexaccess'));
+    echo html_writer::link(new moodle_url('/admin/tool/flexaccess/status.php'), get_string('tabsystemcheck', 'tool_flexaccess'));
+}
 
 echo $OUTPUT->footer();

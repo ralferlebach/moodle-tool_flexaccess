@@ -123,4 +123,48 @@ $capabilities = [
         'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,
         'archetypes' => ['manager' => CAP_ALLOW],
     ],
+
+    // Course-scoped FlexAccess user view: account and enrolment state of the course's visitors.
+    'tool/flexaccess:viewcourseusers' => [
+        'riskbitmask' => RISK_PERSONAL,
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => ['editingteacher' => CAP_ALLOW, 'manager' => CAP_ALLOW],
+    ],
+
+    // Recover frozen FlexAccess accounts and reactivate their enrolments - in this course only.
+    'tool/flexaccess:recovercourse' => [
+        'riskbitmask' => RISK_PERSONAL | RISK_SPAM,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => ['editingteacher' => CAP_ALLOW, 'manager' => CAP_ALLOW],
+    ],
+
+    // Re-enrol a visitor whose FlexAccess enrolment was already removed (separate, confirmed action).
+    'tool/flexaccess:reenrol' => [
+        'riskbitmask' => RISK_PERSONAL,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => ['manager' => CAP_ALLOW],
+    ],
+
+    // Recover frozen FlexAccess accounts site-wide, in batches, across all courses.
+    'tool/flexaccess:recoversystem' => [
+        'riskbitmask' => RISK_PERSONAL | RISK_SPAM,
+        'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => ['manager' => CAP_ALLOW],
+    ],
+
+    // Read the cross-plugin FlexAccess system status.
+    'tool/flexaccess:viewsystemstatus' => [
+        'captype' => 'read', 'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => ['manager' => CAP_ALLOW],
+    ],
+
+    // Run the explicit, deterministic repairs offered by the system status.
+    'tool/flexaccess:repairsystem' => [
+        'riskbitmask' => RISK_CONFIG | RISK_PERSONAL,
+        'captype' => 'write', 'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => ['manager' => CAP_ALLOW],
+    ],
 ];

@@ -61,6 +61,7 @@ if ($form->is_cancelled()) {
 
     echo $OUTPUT->header();
     echo $OUTPUT->heading(get_string('batchconvert', 'tool_flexaccess'));
+    echo \tool_flexaccess\local\navigation::render_accesslist((int) $batch->courseid);
     if (!empty($result['queued'])) {
         echo $OUTPUT->notification(
             get_string('batchconvertqueued', 'tool_flexaccess', count($rows)),
@@ -94,6 +95,7 @@ if ($form->is_cancelled()) {
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('batchconvert', 'tool_flexaccess'));
+echo \tool_flexaccess\local\navigation::render_accesslist((int) $batch->courseid);
 echo html_writer::tag('p', get_string('batchconvert_intro', 'tool_flexaccess'));
 $form->display();
 echo $OUTPUT->footer();

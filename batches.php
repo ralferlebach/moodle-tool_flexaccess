@@ -73,6 +73,7 @@ if ($action === 'new') {
     }
     echo $OUTPUT->header();
     echo $OUTPUT->heading(get_string('batchcreate', 'tool_flexaccess'));
+    echo \tool_flexaccess\local\navigation::render_system(\tool_flexaccess\local\navigation::ACCESSLISTS);
     echo html_writer::tag('p', get_string('batches_intro', 'tool_flexaccess'));
     $form->display();
     echo $OUTPUT->footer();
@@ -87,6 +88,7 @@ if ($action === 'view' && $id > 0) {
     $course = $DB->get_record('course', ['id' => $batch->courseid], 'id, fullname', IGNORE_MISSING);
     echo $OUTPUT->header();
     echo $OUTPUT->heading(format_string($batch->name));
+    echo \tool_flexaccess\local\navigation::render_system(\tool_flexaccess\local\navigation::ACCESSLISTS);
     echo html_writer::tag('p', get_string('batchsummary', 'tool_flexaccess', (object) [
         'count' => $batch->membercount,
         'course' => $course ? format_string($course->fullname) : ('#' . $batch->courseid),
@@ -127,6 +129,7 @@ if ($action === 'view' && $id > 0) {
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('batches', 'tool_flexaccess'));
+echo \tool_flexaccess\local\navigation::render_system(\tool_flexaccess\local\navigation::ACCESSLISTS);
 echo html_writer::tag('p', get_string('batches_intro', 'tool_flexaccess'));
 echo $OUTPUT->single_button(
     new moodle_url($returnurl, ['action' => 'new']),

@@ -24,11 +24,11 @@
 
 
 /**
- * Add a course-level entry point to the teacher-facing access-list batch manager.
+ * Add the course-level FlexAccess entry (Course > More > FlexAccess).
  *
- * Shown only to users who may manage batches in the course (a course teacher holding
- * tool/flexaccess:managecoursebatches, or a site manager). Lets teachers create and download
- * anonymous access lists without leaving the course.
+ * One entry for the course-scoped FlexAccess management; its tabs (users, access lists,
+ * restrictions) are filtered by capability, so the entry is shown as soon as at least one of them is
+ * available to the current user.
  *
  * @param navigation_node $navigation The course navigation node.
  * @param stdClass $course The course.
@@ -36,15 +36,16 @@
  * @return void
  */
 function tool_flexaccess_extend_navigation_course($navigation, $course, $context) {
-    if (!\tool_flexaccess\local\batch::can_request((int) $course->id)) {
+    $tabs = \tool_flexaccess\local\navigation::course_tabs((int) $course->id);
+    if (!$tabs) {
         return;
     }
     $navigation->add(
-        get_string('coursebatches', 'tool_flexaccess'),
-        new moodle_url('/admin/tool/flexaccess/coursebatches.php', ['courseid' => $course->id]),
+        get_string('coursemanagement', 'tool_flexaccess'),
+        reset($tabs)['url'],
         navigation_node::TYPE_SETTING,
         null,
-        'flexaccesscoursebatches',
-        new pix_icon('i/users', '')
+        'flexaccess',
+        new pix_icon('i/settings', '')
     );
 }

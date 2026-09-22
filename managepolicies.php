@@ -82,6 +82,7 @@ if ($form->is_cancelled()) {
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('managepolicies', 'tool_flexaccess'));
+echo \tool_flexaccess\local\navigation::render_system(\tool_flexaccess\local\navigation::POLICIES, 'managepolicies');
 echo html_writer::tag('p', get_string('managepolicies_intro', 'tool_flexaccess'));
 
 $overrides = \enrol_flexaccess\local\category_policy::all();
