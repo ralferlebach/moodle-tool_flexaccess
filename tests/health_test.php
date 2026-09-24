@@ -96,7 +96,7 @@ final class health_test extends \advanced_testcase {
         $userid = \auth_flexaccess\api::create_temporary_user(time() + 3600);
         $item = $this->item(health::check_invariants(time()), 'invariant_temporary_unrestricted');
         $this->assertSame(health::ERROR, $item->status);
-        $this->assertSame(health::REPAIR_RESTRICT, $item->repair);
+        $this->assertSame(health::REPAIR_RECONCILE, $item->repair);
 
         // Tasks: disabling one is reported.
         $task = \core\task\manager::get_scheduled_task('\auth_flexaccess\task\expire_accounts');
@@ -127,15 +127,15 @@ final class health_test extends \advanced_testcase {
         \enrol_flexaccess\local\enrol_service::admin_enrol((int) $course->id, $temporary, false);
         $enrolments = $DB->get_records('user_enrolments', ['userid' => $temporary]);
 
-        $preview = health::preview(health::REPAIR_RESTRICT);
+        $preview = health::preview(health::REPAIR_RECONCILE);
         $this->assertContains($temporary, $preview['userids']);
         $sink = $this->redirectEvents();
-        $this->assertGreaterThanOrEqual(1, health::repair(health::REPAIR_RESTRICT));
+        $this->assertGreaterThanOrEqual(1, health::repair(health::REPAIR_RECONCILE));
         $events = array_filter($sink->get_events(), static fn($e) => $e instanceof event\health_repaired);
         $sink->close();
         $this->assertCount(1, $events);
-        $this->assertSame(health::REPAIR_RESTRICT, reset($events)->other['repair']);
-        $this->assertNotContains($temporary, health::preview(health::REPAIR_RESTRICT)['userids']);
+        $this->assertSame(health::REPAIR_RECONCILE, reset($events)->other['repair']);
+        $this->assertNotContains($temporary, health::preview(health::REPAIR_RECONCILE)['userids']);
         // Enrolments are exactly as before.
         $this->assertEquals($enrolments, $DB->get_records('user_enrolments', ['userid' => $temporary]));
         // Unsuspending an ACTIVE account is not an automatic repair.

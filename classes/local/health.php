@@ -39,22 +39,14 @@ final class health {
 
     /** Repair: recreate/repair both FlexAccess roles. */
     public const REPAIR_ROLES = 'rolemodel';
-    /** Repair: add the missing restriction to live temporary/pending accounts. */
-    public const REPAIR_RESTRICT = 'restricttemporary';
-    /** Repair: remove a stale restriction from ACTIVE accounts. */
-    public const REPAIR_UNRESTRICT = 'unrestrictactive';
-    /** Repair: remove restriction roles held without a FlexAccess account. */
+    /** Repair: the safe account reconciliation (same service as the upgrade backfill). */
+    public const REPAIR_RECONCILE = 'reconcile';
+    /** Repair: remove restriction roles held without a FlexAccess account (explicit, per preview). */
     public const REPAIR_ORPHAN = 'orphanrestriction';
-    /** Repair: re-apply the suspension of EXPIRED/SUSPENDED accounts. */
-    public const REPAIR_RELOCK = 'relocklocked';
 
-    /** Mismatch code handled by each account repair. */
-    private const REPAIR_CODES = [
-        self::REPAIR_RESTRICT => 'temporary_unrestricted',
-        self::REPAIR_UNRESTRICT => 'active_restricted',
-        self::REPAIR_ORPHAN => 'orphan_restriction',
-        self::REPAIR_RELOCK => 'locked_unsuspended',
-    ];
+    /** Mismatch codes the safe reconciliation repairs (subject to its own rules). */
+    private const RECONCILE_CODES = ['temporary_unrestricted', 'active_restricted', 'locked_unsuspended', 'overdue',
+        'active_suspended', 'live_suspended'];
 
     /** Scheduled tasks FlexAccess depends on. */
     public const TASKS = [
@@ -86,6 +78,7 @@ final class health {
         $sections['tasks'] = self::check_tasks($now);
         $sections['policies'] = self::check_policies();
         $sections['mail'] = self::check_mail($now);
+        $sections['reconciliation'] = self::check_reconciliation($now);
         return $sections;
     }
 
@@ -203,16 +196,21 @@ final class health {
         foreach (\auth_flexaccess\api::find_state_mismatches($now, 5000) as $mismatch) {
             $counts[$mismatch->code] = ($counts[$mismatch->code] ?? 0) + 1;
         }
-        $repairs = array_flip(self::REPAIR_CODES);
         $items = [];
         foreach ($counts as $code => $count) {
             $critical = in_array($code, ['temporary_unrestricted', 'locked_unsuspended', 'type_state'], true);
+            $repair = null;
+            if (in_array($code, self::RECONCILE_CODES, true)) {
+                $repair = self::REPAIR_RECONCILE;
+            } else if ($code === 'orphan_restriction') {
+                $repair = self::REPAIR_ORPHAN;
+            }
             $items[] = self::item(
                 'invariant_' . $code,
                 $critical ? self::ERROR : self::WARNING,
                 get_string('mismatch_' . $code, 'auth_flexaccess'),
                 get_string('health_affected', 'tool_flexaccess', $count),
-                $repairs[$code] ?? null,
+                $repair,
                 $count
             );
         }
@@ -340,6 +338,91 @@ final class health {
     }
 
     /**
+     * MIGRATION-006: result of the account reconciliation (last scan, figures, open review cases).
+     *
+     * @param int $now Current time.
+     * @return \stdClass[]
+     */
+    public static function check_reconciliation(int $now): array {
+        $state = reconciliation::state();
+        $items = [];
+        if ($state->status === 'never') {
+            $items[] = self::item(
+                'reconcile_never',
+                self::WARNING,
+                get_string('reconcile_never', 'tool_flexaccess'),
+                '',
+                self::REPAIR_RECONCILE
+            );
+        } else if ($state->status === 'running') {
+            $items[] = self::item('reconcile_running', self::INFO, get_string('reconcile_running', 'tool_flexaccess', (object) [
+                'checked' => $state->checked,
+                'total' => $state->total,
+            ]));
+        } else {
+            $items[] = self::item('reconcile_lastscan', self::OK, get_string(
+                'reconcile_lastscan',
+                'tool_flexaccess',
+                userdate((int) $state->lastfullscan)
+            ));
+        }
+        $items[] = self::item('reconcile_figures', self::INFO, get_string('reconcile_figures', 'tool_flexaccess', (object) [
+            'checked' => $state->checked,
+            'repaired' => $state->repairedaccounts,
+            'roles' => $state->rolefixes,
+            'core' => $state->corefixes,
+        ]));
+        $repairable = self::auto_repairable_count($now);
+        $items[] = self::item(
+            'reconcile_repairable',
+            $repairable > 0 ? self::WARNING : self::OK,
+            get_string('reconcile_repairable', 'tool_flexaccess', $repairable),
+            '',
+            $repairable > 0 ? self::REPAIR_RECONCILE : null,
+            $repairable
+        );
+        $cases = reconciliation::open_case_counts();
+        foreach ($cases as $code => $count) {
+            $items[] = self::item(
+                'reconcile_case_' . $code,
+                self::WARNING,
+                get_string('reconcile_' . $code, 'tool_flexaccess'),
+                (new \moodle_url('/admin/tool/flexaccess/status.php', ['cases' => $code]))->out(false),
+                null,
+                $count
+            );
+        }
+        if (!$cases) {
+            $items[] = self::item('reconcile_nocases', self::OK, get_string('reconcile_nocases', 'tool_flexaccess'));
+        }
+        return $items;
+    }
+
+    /**
+     * Number of accounts the safe reconciliation would still change (target: 0).
+     *
+     * @param int $now Current time.
+     * @return int
+     */
+    public static function auto_repairable_count(int $now): int {
+        $userids = [];
+        foreach (\auth_flexaccess\api::find_state_mismatches($now, 5000) as $m) {
+            if (in_array($m->code, self::RECONCILE_CODES, true)) {
+                $userids[] = (int) $m->userid;
+            }
+        }
+        $count = 0;
+        foreach (array_chunk(array_values(array_unique($userids)), reconciliation::BATCH) as $chunk) {
+            foreach (reconciliation::inspect_users($chunk, $now) as $snapshot) {
+                if (reconciliation::evaluate($snapshot)['repairs']) {
+                    $count++;
+                }
+            }
+        }
+        return $count;
+    }
+
+    /**
      * Items a repair would change (preview).
      *
      * @param string $repair Repair code.
@@ -348,19 +431,26 @@ final class health {
      */
     public static function preview(string $repair, ?int $now = null): array {
         if ($repair === self::REPAIR_ROLES) {
-            return ['userids' => [], 'problems' => \enrol_flexaccess\api::role_model_problems()];
+            return ['userids' => [], 'problems' => \enrol_flexaccess\api::role_model_problems(), 'report' => null];
         }
-        if (!isset(self::REPAIR_CODES[$repair])) {
-            return ['userids' => [], 'problems' => []];
+        if ($repair === self::REPAIR_RECONCILE) {
+            // Inspect only: exactly the rules the safe repair would apply, and the review cases.
+            $report = reconciliation::run(reconciliation::MODE_INSPECT, reconciliation::SOURCE_STATUS, 60, $now);
+            $userids = [];
+            foreach ($report->repairs as $ids) {
+                $userids = array_merge($userids, array_filter($ids));
+            }
+            return ['userids' => array_values(array_unique($userids)), 'problems' => [], 'report' => $report];
         }
-        $code = self::REPAIR_CODES[$repair];
         $userids = [];
-        foreach (\auth_flexaccess\api::find_state_mismatches($now, 5000) as $mismatch) {
-            if ($mismatch->code === $code) {
-                $userids[] = (int) $mismatch->userid;
+        if ($repair === self::REPAIR_ORPHAN) {
+            foreach (\auth_flexaccess\api::find_state_mismatches($now, 5000) as $mismatch) {
+                if ($mismatch->code === 'orphan_restriction') {
+                    $userids[] = (int) $mismatch->userid;
+                }
             }
         }
-        return ['userids' => array_values(array_unique($userids)), 'problems' => []];
+        return ['userids' => array_values(array_unique($userids)), 'problems' => [], 'report' => null];
     }
 
     /**
@@ -371,17 +461,26 @@ final class health {
      * @return int Number of items changed.
      */
     public static function repair(string $repair, ?int $now = null): int {
-        $preview = self::preview($repair, $now);
         $changed = 0;
         $userids = [];
         if ($repair === self::REPAIR_ROLES) {
+            $preview = self::preview($repair, $now);
             if ($preview['problems'] || \enrol_flexaccess\api::find_role_mismatches(1)['systemparticipant'] > 0) {
                 \enrol_flexaccess\api::repair_role_model();
+                \enrol_flexaccess\api::remove_system_participant_assignments();
                 $changed = 1;
             }
-        } else if (isset(self::REPAIR_CODES[$repair])) {
-            foreach ($preview['userids'] as $userid) {
-                if (\auth_flexaccess\api::repair_state_mismatch($userid, self::REPAIR_CODES[$repair])) {
+        } else if ($repair === self::REPAIR_RECONCILE) {
+            // A fresh safe-repair run; too large for one request, it continues in the ad-hoc task.
+            set_config('reconcile_state', '', 'tool_flexaccess');
+            $state = reconciliation::run(reconciliation::MODE_REPAIR, reconciliation::SOURCE_STATUS, 60, $now);
+            if ($state->status === 'running') {
+                reconciliation::queue_continuation();
+            }
+            $changed = (int) $state->repairedaccounts;
+        } else if ($repair === self::REPAIR_ORPHAN) {
+            foreach (self::preview($repair, $now)['userids'] as $userid) {
+                if (\auth_flexaccess\api::repair_state_mismatch($userid, 'orphan_restriction')) {
                     $changed++;
                     $userids[] = $userid;
                 }
@@ -400,7 +499,7 @@ final class health {
      * @return string[]
      */
     public static function repairs(): array {
-        return array_merge([self::REPAIR_ROLES], array_keys(self::REPAIR_CODES));
+        return [self::REPAIR_ROLES, self::REPAIR_RECONCILE, self::REPAIR_ORPHAN];
     }
 
     /**

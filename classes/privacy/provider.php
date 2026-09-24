@@ -52,6 +52,12 @@ final class provider implements
     /** Batch member table. */
     private const BATCH_MEMBER_TABLE = 'tool_flexaccess_batch_member';
 
+    /** Reconciliation review cases. */
+    private const RECONCILE_TABLE = 'tool_flexaccess_reconcile';
+
+    /** Reconciliation audit trail. */
+    private const RECONCILE_LOG = 'tool_flexaccess_reconcile_log';
+
     /**
      * Describe the personal data stored by this plugin.
      *
@@ -78,6 +84,19 @@ final class provider implements
             'userid' => 'privacy:metadata:batchmember:userid',
             'username' => 'privacy:metadata:batchmember:username',
         ], 'privacy:metadata:batchmember');
+        $collection->add_database_table(self::RECONCILE_TABLE, [
+            'userid' => 'privacy:metadata:reconcile:userid',
+            'code' => 'privacy:metadata:reconcile:code',
+            'status' => 'privacy:metadata:reconcile:status',
+            'timecreated' => 'privacy:metadata:reconcile:timecreated',
+        ], 'privacy:metadata:reconcile');
+        $collection->add_database_table(self::RECONCILE_LOG, [
+            'userid' => 'privacy:metadata:reconcilelog:userid',
+            'actorid' => 'privacy:metadata:reconcilelog:actorid',
+            'rule' => 'privacy:metadata:reconcilelog:rule',
+            'changes' => 'privacy:metadata:reconcilelog:changes',
+            'timecreated' => 'privacy:metadata:reconcilelog:timecreated',
+        ], 'privacy:metadata:reconcilelog');
         return $collection;
     }
 
@@ -97,6 +116,9 @@ final class provider implements
                 || ($email !== '' && $DB->record_exists(self::INVITE_TABLE, ['email' => $email]))
                 || $DB->record_exists(self::BATCH_TABLE, ['usermodified' => $userid])
                 || $DB->record_exists(self::BATCH_MEMBER_TABLE, ['userid' => $userid])
+                || $DB->record_exists(self::RECONCILE_TABLE, ['userid' => $userid])
+                || $DB->record_exists(self::RECONCILE_LOG, ['userid' => $userid])
+                || $DB->record_exists(self::RECONCILE_LOG, ['actorid' => $userid])
         ) {
             $contextlist->add_system_context();
         }
@@ -123,6 +145,13 @@ final class provider implements
         $memberids = $DB->get_fieldset_select(self::BATCH_MEMBER_TABLE, 'DISTINCT userid', 'userid <> 0');
         if ($memberids) {
             $userlist->add_users(array_map('intval', $memberids));
+        }
+        $targets = [[self::RECONCILE_TABLE, 'userid'], [self::RECONCILE_LOG, 'userid'], [self::RECONCILE_LOG, 'actorid']];
+        foreach ($targets as [$t, $f]) {
+            $ids = $DB->get_fieldset_select($t, "DISTINCT $f", "$f <> 0");
+            if ($ids) {
+                $userlist->add_users(array_map('intval', $ids));
+            }
         }
     }
 
@@ -188,6 +217,27 @@ final class provider implements
                     ]
                 );
             }
+            // Reconciliation review cases and repairs concerning this user.
+            foreach ($DB->get_records(self::RECONCILE_TABLE, ['userid' => $userid], 'id ASC') as $case) {
+                writer::with_context($context)->export_data(
+                    ['tool_flexaccess', 'reconcile', (string) $case->id],
+                    (object) [
+                        'code' => $case->code,
+                        'status' => $case->status,
+                        'timecreated' => \core_privacy\local\request\transform::datetime((int) $case->timecreated),
+                    ]
+                );
+            }
+            foreach ($DB->get_records(self::RECONCILE_LOG, ['userid' => $userid], 'id ASC') as $entry) {
+                writer::with_context($context)->export_data(
+                    ['tool_flexaccess', 'reconcilelog', (string) $entry->id],
+                    (object) [
+                        'rule' => $entry->rule,
+                        'changes' => $entry->changes,
+                        'timecreated' => \core_privacy\local\request\transform::datetime((int) $entry->timecreated),
+                    ]
+                );
+            }
         }
     }
 
@@ -209,6 +259,8 @@ final class provider implements
             $DB->set_field_select(self::BATCH_TABLE, 'usermodified', 0, 'usermodified <> 0');
             // Batch members are entirely personal (userid + username); purge them.
             $DB->delete_records(self::BATCH_MEMBER_TABLE);
+            $DB->delete_records(self::RECONCILE_TABLE);
+            $DB->delete_records(self::RECONCILE_LOG);
         }
     }
 
@@ -231,6 +283,9 @@ final class provider implements
                 }
                 $DB->set_field(self::BATCH_TABLE, 'usermodified', 0, ['usermodified' => $userid]);
                 $DB->delete_records(self::BATCH_MEMBER_TABLE, ['userid' => $userid]);
+                $DB->delete_records(self::RECONCILE_TABLE, ['userid' => $userid]);
+                $DB->delete_records(self::RECONCILE_LOG, ['userid' => $userid]);
+                $DB->set_field(self::RECONCILE_LOG, 'actorid', 0, ['actorid' => $userid]);
             }
         }
     }
@@ -259,5 +314,8 @@ final class provider implements
         }
         $DB->set_field_select(self::BATCH_TABLE, 'usermodified', 0, "usermodified $insql", $params);
         $DB->delete_records_select(self::BATCH_MEMBER_TABLE, "userid $insql", $params);
+        $DB->delete_records_select(self::RECONCILE_TABLE, "userid $insql", $params);
+        $DB->delete_records_select(self::RECONCILE_LOG, "userid $insql", $params);
+        $DB->set_field_select(self::RECONCILE_LOG, 'actorid', 0, "actorid $insql", $params);
     }
 }

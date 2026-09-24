@@ -28,6 +28,7 @@ use tool_flexaccess\local\health;
 use tool_flexaccess\local\navigation;
 
 $repair = optional_param('repair', '', PARAM_ALPHA);
+$cases = optional_param('cases', '', PARAM_ALPHANUMEXT);
 $confirm = optional_param('confirm', 0, PARAM_BOOL);
 
 require_login();
@@ -67,10 +68,34 @@ echo navigation::render_system(navigation::STATUS, 'systemcheck');
 
 // Preview of a repair: what exactly would change, then an explicit confirmation.
 if ($repair !== '') {
-    require_capability('tool/flexaccess:repairsystem', $context);
+    // The reconciliation preview is a pure inspection and needs only the read capability.
+    if ($repair !== health::REPAIR_RECONCILE) {
+        require_capability('tool/flexaccess:repairsystem', $context);
+    }
+    $canconfirm = has_capability('tool/flexaccess:repairsystem', $context);
     $preview = health::preview($repair);
     echo $OUTPUT->heading(get_string('healthrepair_' . $repair, 'tool_flexaccess'), 3);
     echo html_writer::tag('p', get_string('healthrepairdesc_' . $repair, 'tool_flexaccess'));
+    if ($preview['report'] !== null) {
+        // Inspect only: nothing is changed by this view.
+        $report = $preview['report'];
+        echo $OUTPUT->notification(get_string('reconcile_inspectresult', 'tool_flexaccess', (object) [
+            'checked' => $report->checked,
+            'complete' => $report->complete ? '' : get_string('reconcile_partial', 'tool_flexaccess'),
+        ]), 'info');
+        $table = new html_table();
+        $table->head = [get_string('healthrepair', 'tool_flexaccess'), get_string('health_affected', 'tool_flexaccess', '')];
+        foreach ($report->repairs as $rule => $ids) {
+            $table->data[] = [get_string('reconcile_rule_' . $rule, 'tool_flexaccess'), count($ids)];
+        }
+        foreach ($report->reviews as $code => $ids) {
+            $table->data[] = [get_string('reconcile_' . $code, 'tool_flexaccess') . ' (' .
+                get_string('reconcile_reviewonly', 'tool_flexaccess') . ')', count($ids)];
+        }
+        if ($table->data) {
+            echo html_writer::table($table);
+        }
+    }
     $items = [];
     foreach ($preview['problems'] as $problem) {
         $items[] = get_string('health_role_' . $problem, 'tool_flexaccess');
@@ -85,17 +110,43 @@ if ($repair !== '') {
             );
         }
     }
+    if (!$items && $repair === health::REPAIR_RECONCILE && !empty($preview['report']->repairs)) {
+        // Site-wide role repairs have no user list but still need the confirmation.
+        $items[] = get_string('reconcile_siteonly', 'tool_flexaccess');
+    }
     if (!$items) {
         echo $OUTPUT->notification(get_string('healthrepairnothing', 'tool_flexaccess'), 'info');
         echo $OUTPUT->continue_button($pageurl);
     } else {
         echo html_writer::alist($items);
+        if (!$canconfirm) {
+            echo $OUTPUT->continue_button($pageurl);
+            echo $OUTPUT->footer();
+            exit;
+        }
         echo $OUTPUT->confirm(
             get_string('healthrepairconfirm', 'tool_flexaccess', count($items)),
             new single_button(new moodle_url($pageurl, ['repair' => $repair, 'confirm' => 1]), get_string('confirm'), 'post'),
             new single_button($pageurl, get_string('cancel'), 'get')
         );
     }
+    echo $OUTPUT->footer();
+    exit;
+}
+
+// Drill-down: open review cases of one class, each linked to the user view.
+if ($cases !== '') {
+    echo $OUTPUT->heading(get_string('reconcile_' . $cases, 'tool_flexaccess'), 3);
+    $rows = \tool_flexaccess\local\reconciliation::open_cases($cases, 500);
+    $namefields = 'id, ' . implode(', ', \core_user\fields::get_name_fields());
+    $users = $DB->get_records_list('user', 'id', array_map(static fn($r) => $r->userid, $rows), '', $namefields);
+    $list = [];
+    foreach ($rows as $row) {
+        $name = isset($users[$row->userid]) ? fullname($users[$row->userid]) : (string) $row->userid;
+        $list[] = html_writer::link(new moodle_url('/admin/tool/flexaccess/user.php', ['userid' => $row->userid]), $name);
+    }
+    echo $list ? html_writer::alist($list) : $OUTPUT->notification(get_string('reconcile_nocases', 'tool_flexaccess'), 'info');
+    echo $OUTPUT->continue_button($pageurl);
     echo $OUTPUT->footer();
     exit;
 }
@@ -107,6 +158,15 @@ echo $OUTPUT->notification(
     $overall === health::OK ? 'success' : ($overall === health::WARNING ? 'warning' : 'error')
 );
 $canrepair = has_capability('tool/flexaccess:repairsystem', $context);
+// Reconciliation can be re-run at any time: inspect first, then (with permission) the safe repair.
+echo html_writer::div(
+    $OUTPUT->single_button(
+        new moodle_url($pageurl, ['repair' => health::REPAIR_RECONCILE]),
+        get_string('reconcile_inspect', 'tool_flexaccess'),
+        'get'
+    ),
+    'mb-3'
+);
 $badges = [
     health::OK => 'badge-success bg-success',
     health::INFO => 'badge-info bg-info',

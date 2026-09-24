@@ -101,6 +101,13 @@ $facts->data = [
     [get_string('verificationpending', 'tool_flexaccess'), get_string($snapshot->verificationpending ? 'yes' : 'no')],
     [get_string('credentialfunnel', 'tool_flexaccess'), get_string('credential_' . $snapshot->credentialstatus, 'tool_flexaccess')],
 ];
+$reviewcases = \tool_flexaccess\local\reconciliation::user_cases($userid);
+if ($reviewcases) {
+    $facts->data[] = [
+        get_string('reconcile_reviewcases', 'tool_flexaccess'),
+        implode(', ', array_map(static fn(string $c): string => get_string('reconcile_' . $c, 'tool_flexaccess'), $reviewcases)),
+    ];
+}
 if ($snapshot->mismatches) {
     $facts->data[] = [
         get_string('inconsistencies', 'tool_flexaccess'),

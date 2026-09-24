@@ -94,5 +94,43 @@
         <INDEX NAME="batch_username_ix" UNIQUE="false" FIELDS="batchid, username"/>
       </INDEXES>
     </TABLE>
+    <TABLE NAME="tool_flexaccess_reconcile" COMMENT="Open and resolved review cases found by the FlexAccess account reconciliation">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="code" TYPE="char" LENGTH="40" NOTNULL="true" SEQUENCE="false" COMMENT="Review class, e.g. review_admin_suspension"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="10" NOTNULL="true" DEFAULT="open" SEQUENCE="false" COMMENT="open or resolved"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="userid_fk" TYPE="foreign" FIELDS="userid" REFTABLE="user" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="user_code_uix" UNIQUE="true" FIELDS="userid, code"/>
+        <INDEX NAME="status_code_ix" UNIQUE="false" FIELDS="status, code"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="tool_flexaccess_reconcile_log" COMMENT="Audit trail of every automatic or manual reconciliation repair">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Affected user; 0 for site-wide repairs (role model)"/>
+        <FIELD NAME="rule" TYPE="char" LENGTH="40" NOTNULL="true" SEQUENCE="false" COMMENT="Applied reconciliation rule"/>
+        <FIELD NAME="source" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="upgrade, task, systemstatus or recovery"/>
+        <FIELD NAME="actorid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Interactive user who ran it; 0 for upgrade/cron"/>
+        <FIELD NAME="beforestate" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Compact state before: type/state/suspended/restricted/lockedby"/>
+        <FIELD NAME="changes" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Changed fields, roles or enrolments"/>
+        <FIELD NAME="result" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="repaired or unchanged"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="userid_ix" UNIQUE="false" FIELDS="userid"/>
+        <INDEX NAME="rule_ix" UNIQUE="false" FIELDS="rule"/>
+      </INDEXES>
+    </TABLE>
   </TABLES>
 </XMLDB>

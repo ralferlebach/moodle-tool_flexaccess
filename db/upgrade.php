@@ -288,5 +288,47 @@ function xmldb_tool_flexaccess_upgrade($oldversion) {
         }
         upgrade_plugin_savepoint(true, 2026082440, 'tool', 'flexaccess');
     }
+
+    if ($oldversion < 2026092202) {
+        // Account reconciliation (issue tool#7): review cases and audit trail.
+        $table = new xmldb_table('tool_flexaccess_reconcile');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('code', XMLDB_TYPE_CHAR, '40', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('status', XMLDB_TYPE_CHAR, '10', null, XMLDB_NOTNULL, null, 'open');
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_key('userid_fk', XMLDB_KEY_FOREIGN, ['userid'], 'user', ['id']);
+        $table->add_index('user_code_uix', XMLDB_INDEX_UNIQUE, ['userid', 'code']);
+        $table->add_index('status_code_ix', XMLDB_INDEX_NOTUNIQUE, ['status', 'code']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        $table = new xmldb_table('tool_flexaccess_reconcile_log');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('rule', XMLDB_TYPE_CHAR, '40', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('source', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('actorid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('beforestate', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('changes', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('result', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('userid_ix', XMLDB_INDEX_NOTUNIQUE, ['userid']);
+        $table->add_index('rule_ix', XMLDB_INDEX_NOTUNIQUE, ['rule']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        // Retroactive reconciliation of every existing FlexAccess account, with the same service the
+        // system status uses later. Safe repairs are applied, ambiguous cases are recorded for review.
+        // The upgrade does a bounded first pass; a large installation continues in an ad-hoc task
+        // (progress is persisted after every batch and visible in the system status).
+        \tool_flexaccess\local\reconciliation::start_upgrade_backfill();
+        upgrade_plugin_savepoint(true, 2026092202, 'tool', 'flexaccess');
+    }
     return true;
 }
