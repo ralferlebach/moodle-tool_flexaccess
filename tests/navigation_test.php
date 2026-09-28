@@ -129,4 +129,36 @@ final class navigation_test extends \advanced_testcase {
         tool_flexaccess_extend_navigation_course($root, $course, \context_course::instance((int) $course->id));
         $this->assertFalse($root->get('flexaccess'));
     }
+
+    /**
+     * Page scripts have no namespace, so every class reference in them must be fully qualified.
+     *
+     * A short reference such as navigation::ACCESSLISTS parses fine and only fails at runtime, on the
+     * one page and in the one branch that renders it. It cost a red browser test once; this scan makes
+     * it a unit-test failure instead.
+     *
+     * @return void
+     */
+    public function test_page_scripts_reference_classes_fully_qualified(): void {
+        global $CFG;
+        $offenders = [];
+        foreach (glob($CFG->dirroot . '/admin/tool/flexaccess/*.php') as $file) {
+            $code = (string) file_get_contents($file);
+            if (preg_match('/^\s*use\s+tool_flexaccess\\\\local\\\\navigation;/m', $code)) {
+                continue;
+            }
+            // Strip comments and strings so documentation and lang keys cannot trip the scan.
+            $stripped = '';
+            foreach (token_get_all($code) as $token) {
+                if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT, T_CONSTANT_ENCAPSED_STRING], true)) {
+                    continue;
+                }
+                $stripped .= is_array($token) ? $token[1] : $token;
+            }
+            if (preg_match('/(?<![\\\\\w])navigation::/', $stripped)) {
+                $offenders[] = basename($file);
+            }
+        }
+        $this->assertSame([], $offenders, 'Unqualified navigation:: in a page script.');
+    }
 }

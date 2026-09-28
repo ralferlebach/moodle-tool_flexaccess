@@ -1,6 +1,9 @@
 # Changelog
 
-## 1.1.1 — 2026-09-22 — Rückwirkender Kontenabgleich mit Prüffällen und Protokoll
+## 1.1.0 (2026092800) — 2026-09-28 — Versions-Gleichschritt
+- Keine funktionale Änderung. Abhängigkeiten auf `auth_flexaccess` und `enrol_flexaccess` ≥ `2026092800` angehoben. Version `2026092800`, Release `1.1.0`, `MATURITY_STABLE`.
+
+## 1.1.0 (2026092202) — 2026-09-28 — Rückwirkender Kontenabgleich mit Prüffällen und Protokoll
 - **Neuer Abgleich (`local\reconciliation`).** Er prüft bestehende Konten gegen die Lebenszyklus-Invarianten: FlexAccess-Konto, Moodle-Nutzer, Restriktionsrolle, FlexAccess-Einschreibungen mit ihrer Kursrolle sowie offene Vorgänge und Mails.
 - **Zwei Betriebsarten:** „nur prüfen“ ändert nichts; „reparieren“ wendet ausschließlich eindeutige Reparaturen an.
 - **Eindeutige Grenze:** Nie reaktiviert, neu eingeschrieben oder zusammengeführt wird automatisch, und eine Sperre wird nur aufgehoben, wenn FlexAccess sie selbst gesetzt hat.
@@ -9,9 +12,9 @@
 - **Läuft in Stapeln mit gespeichertem Fortschritt.** Das Upgrade startet den Durchlauf; bei großen Installationen setzt eine Ad-hoc-Aufgabe ihn fort, und ein Abbruch führt zur Wiederaufnahme statt zum Neubeginn. Ein zweiter Lauf auf unveränderten Daten ändert nichts.
 - **Systemstatus erweitert:** Abschnitt zum Abgleich mit Stand des letzten Laufs, offenen Prüffällen und der Aktion „Konten prüfen“. Der Drill-down eines Nutzers zeigt seine Prüffälle.
 - Datenschutz-Provider um beide neuen Tabellen ergänzt.
-- Reifegrad `MATURITY_STABLE`, Version `2026092202`, Release `1.1.1`. Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026092202`.
+- Reifegrad `MATURITY_STABLE`, Version `2026092202`, Release `1.1.0`. Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026092202`.
 
-## 1.1.0 — 2026-09-22 — Reiterstruktur, Nutzerverwaltung auf Kurs- und Systemebene, Recovery, Systemstatus
+## 1.1.0 (2026092201) — 2026-09-22 — Reiterstruktur, Nutzerverwaltung auf Kurs- und Systemebene, Recovery, Systemstatus
 - **Einheitliche Reiter (Issue #4).** Alle Verwaltungsseiten tragen dieselbe Reiterleiste an derselben Stelle:
   - Übersicht, Nutzer, Zugangslisten
   - Einladungen & Kampagnen (mit Unterreitern)
