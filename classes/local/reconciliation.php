@@ -63,6 +63,8 @@ final class reconciliation {
     public const RULE_RELOCK = 'relock_locked';
     /** Repair: expire a temporary account whose expiry time has passed. */
     public const RULE_EXPIRE = 'expire_overdue';
+    /** Repair: remove the FlexAccess metadata of a user Moodle has deleted (terminal state). */
+    public const RULE_PURGE_DELETED = 'purge_deleted_user';
     /** Repair: restore the FlexAccess role definitions. */
     public const RULE_ROLEMODEL = 'role_model';
     /** Repair: remove system-level assignments of the course-only participant role. */
@@ -70,6 +72,8 @@ final class reconciliation {
 
     /** Review: the suspension cannot be attributed to FlexAccess; possibly administrative. */
     public const REVIEW_ADMIN_SUSPENSION = 'review_admin_suspension';
+    /** Review: expired/suspended account whose Moodle suspension has no recorded FlexAccess origin. */
+    public const REVIEW_UNKNOWN_LOCK_ORIGIN = 'review_unknown_lock_origin';
     /** Review: expired or suspended account that still has an active course enrolment. */
     public const REVIEW_EXPIRED_ACCOUNT = 'review_expired_account';
     /** Review: a live temporary account whose origin-course enrolment is gone. */
@@ -132,7 +136,8 @@ final class reconciliation {
      */
     public static function inspect_users(array $userids, ?int $now = null): array {
         $now = $now ?? time();
-        $accounts = \auth_flexaccess\api::get_accounts($userids);
+        // Every account row, including those of deleted users: they are classified, never skipped.
+        $accounts = \auth_flexaccess\api::get_accounts($userids, true);
         if (!$accounts) {
             return [];
         }
@@ -154,7 +159,7 @@ final class reconciliation {
             $out[$userid] = (object) [
                 'userid' => $userid,
                 'user' => (object) [
-                    'deleted' => 0,
+                    'deleted' => (int) ($a->deleted ?? 0),
                     'suspended' => (int) $a->suspended,
                     'confirmed' => (int) $a->confirmed,
                     'auth' => (string) $a->auth,
@@ -190,6 +195,10 @@ final class reconciliation {
         $repairs = [];
         $reviews = [];
 
+        // A deleted Moodle user is terminal: nothing to reactivate, only leftover metadata to remove.
+        if ((int) $snapshot->user->deleted === 1) {
+            return ['repairs' => [self::RULE_PURGE_DELETED], 'reviews' => []];
+        }
         // No automatic decision where the data itself is contradictory or the identity moved on.
         if (in_array('type_state', $codes, true)) {
             return ['repairs' => [], 'reviews' => [self::REVIEW_STATE_CONTRADICTION]];
@@ -212,6 +221,16 @@ final class reconciliation {
         }
 
         $locked = $account->lapsed || in_array($account->state, [account_state::EXPIRED, account_state::SUSPENDED], true);
+        // A locked account whose suspension FlexAccess did not demonstrably set: its origin is unknown
+        // (legacy data, or an administrator suspended it before it expired). It is consistent as it is,
+        // but it cannot be recovered by FlexAccess until an administrator decides - so it is listed.
+        if (
+            in_array($account->state, [account_state::EXPIRED, account_state::SUSPENDED], true)
+                && (int) $snapshot->user->suspended === 1
+                && $account->lockedby !== \auth_flexaccess\local\lifecycle::LOCKED_BY_FLEXACCESS
+        ) {
+            $reviews[] = self::REVIEW_UNKNOWN_LOCK_ORIGIN;
+        }
         $percourse = [];
         foreach ($snapshot->enrolments as $enrolment) {
             $percourse[$enrolment->courseid][] = $enrolment;
@@ -453,7 +472,10 @@ final class reconciliation {
         $before = self::describe($snapshot);
         $changed = false;
         $changes = '';
-        if ($rule === self::RULE_UNRESTRICT) {
+        if ($rule === self::RULE_PURGE_DELETED) {
+            $changed = \auth_flexaccess\api::purge_deleted_user_account($userid);
+            $changes = 'FlexAccess metadata of deleted user removed';
+        } else if ($rule === self::RULE_UNRESTRICT) {
             $removed = \enrol_flexaccess\api::unrestrict_completely($userid);
             $changed = $removed > 0;
             $changes = 'role flexaccessrestricted removed (' . $removed . ')';
@@ -513,12 +535,9 @@ final class reconciliation {
      */
     private static function record_orphan_restrictions(int $now): void {
         global $DB;
-        $orphans = [];
-        foreach (\auth_flexaccess\api::find_state_mismatches($now, 10000) as $m) {
-            if ($m->code === 'orphan_restriction') {
-                $orphans[(int) $m->userid] = true;
-            }
-        }
+        // Complete list, never a truncated scan: a case may only be resolved when a full check no
+        // longer finds it, not because it fell off the end of a limited result set.
+        $orphans = array_fill_keys(\auth_flexaccess\api::find_orphan_restriction_userids(), true);
         foreach (array_keys($orphans) as $userid) {
             self::store_cases($userid, [self::REVIEW_ORPHAN_RESTRICTION], $now);
         }
@@ -644,6 +663,7 @@ final class reconciliation {
             'suspended=' . $snapshot->user->suspended,
             'restricted=' . ($snapshot->restricted ? 1 : 0),
             'lockedby=' . ($snapshot->account->lockedby ?? '-'),
+            'deleted=' . (int) $snapshot->user->deleted,
         ]);
     }
 

@@ -330,5 +330,12 @@ function xmldb_tool_flexaccess_upgrade($oldversion) {
         \tool_flexaccess\local\reconciliation::start_upgrade_backfill();
         upgrade_plugin_savepoint(true, 2026092202, 'tool', 'flexaccess');
     }
+    if ($oldversion < 2026092801) {
+        // The auth plugin withdrew inferred suspension origins in the same release: run the account
+        // reconciliation again so the affected accounts surface as review cases.
+        \tool_flexaccess\local\reconciliation::start_upgrade_backfill();
+        upgrade_plugin_savepoint(true, 2026092801, 'tool', 'flexaccess');
+    }
+
     return true;
 }

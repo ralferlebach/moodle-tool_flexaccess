@@ -58,6 +58,9 @@ final class health {
     /** A task whose next run lies this far in the past is overdue (cron not running). */
     private const TASK_OVERDUE = 2 * HOURSECS;
 
+    /** Policy conflicts listed individually; the rest is counted and reported as truncated. */
+    private const POLICY_LIST = 50;
+
     /** Oldest queued mail age that indicates a stuck queue. */
     private const MAIL_STUCK = DAYSECS;
 
@@ -192,10 +195,8 @@ final class health {
      * @return \stdClass[]
      */
     public static function check_invariants(int $now): array {
-        $counts = [];
-        foreach (\auth_flexaccess\api::find_state_mismatches($now, 5000) as $mismatch) {
-            $counts[$mismatch->code] = ($counts[$mismatch->code] ?? 0) + 1;
-        }
+        // Complete counts over every account: a status must never rest on a cut-off result set.
+        $counts = \auth_flexaccess\api::count_state_mismatches($now);
         $items = [];
         foreach ($counts as $code => $count) {
             $critical = in_array($code, ['temporary_unrestricted', 'locked_unsuspended', 'type_state'], true);
@@ -214,15 +215,16 @@ final class health {
                 $count
             );
         }
-        $roles = \enrol_flexaccess\api::find_role_mismatches(1000);
-        if ($roles['missingrole']) {
+        $roles = \enrol_flexaccess\api::find_role_mismatches(1);
+        $missingrole = \enrol_flexaccess\api::count_missing_course_roles();
+        if ($missingrole > 0) {
             $items[] = self::item(
                 'invariant_courserole',
                 self::WARNING,
                 get_string('health_courserole', 'tool_flexaccess'),
-                get_string('health_affected', 'tool_flexaccess', count($roles['missingrole'])),
+                get_string('health_affected', 'tool_flexaccess', $missingrole),
                 null,
-                count($roles['missingrole'])
+                $missingrole
             );
         }
         if ($roles['systemparticipant'] > 0) {
@@ -282,7 +284,20 @@ final class health {
      */
     public static function check_policies(): array {
         $items = [];
-        foreach (\enrol_flexaccess\api::policy_conflicts(null, 200) as $conflict) {
+        // All conflicts are determined; only the list shown is shortened, and says so.
+        $conflicts = \enrol_flexaccess\api::policy_conflicts(null, 0);
+        $shown = array_slice($conflicts, 0, self::POLICY_LIST);
+        if (count($conflicts) > count($shown)) {
+            $items[] = self::item(
+                'policy_truncated',
+                self::WARNING,
+                get_string('health_policytruncated', 'tool_flexaccess', (object) [
+                    'total' => count($conflicts),
+                    'shown' => count($shown),
+                ])
+            );
+        }
+        foreach ($shown as $conflict) {
             $course = get_course($conflict->courseid);
             $items[] = self::item(
                 'policy_' . $conflict->enrolid . '_' . $conflict->flag,
@@ -406,7 +421,7 @@ final class health {
      */
     public static function auto_repairable_count(int $now): int {
         $userids = [];
-        foreach (\auth_flexaccess\api::find_state_mismatches($now, 5000) as $m) {
+        foreach (\auth_flexaccess\api::find_state_mismatches($now, 0) as $m) {
             if (in_array($m->code, self::RECONCILE_CODES, true)) {
                 $userids[] = (int) $m->userid;
             }
@@ -444,11 +459,7 @@ final class health {
         }
         $userids = [];
         if ($repair === self::REPAIR_ORPHAN) {
-            foreach (\auth_flexaccess\api::find_state_mismatches($now, 5000) as $mismatch) {
-                if ($mismatch->code === 'orphan_restriction') {
-                    $userids[] = (int) $mismatch->userid;
-                }
-            }
+            $userids = \auth_flexaccess\api::find_orphan_restriction_userids();
         }
         return ['userids' => array_values(array_unique($userids)), 'problems' => [], 'report' => null];
     }

@@ -105,11 +105,15 @@ final class recovery {
      * @param \stdClass $snapshot Snapshot.
      * @param int|null $now Current time.
      * @return string Action code: temporaryrevived, verificationresent, normalised, setpassword, none,
-     *     noteligible.
+     *     noteligible, foreignlock.
      */
     public static function predict_account_action(\stdClass $snapshot, ?int $now = null): string {
         $now = $now ?? time();
         $state = $snapshot->accountstate;
+        if (!$snapshot->liftable) {
+            // A suspension FlexAccess did not set: recovery changes nothing (administrative decision).
+            return 'foreignlock';
+        }
         if ($snapshot->accounttype === account_type::TEMPORARY_USER) {
             if ($state === account_state::SUSPENDED) {
                 return 'noteligible';
@@ -126,6 +130,37 @@ final class recovery {
             return $snapshot->mismatches ? 'normalised' : 'none';
         }
         return 'noteligible';
+    }
+
+    /**
+     * Whether an account action makes the (global) account usable again.
+     *
+     * Such an action restores the user's access in every course where a FlexAccess enrolment is still
+     * effective - not only in the course the recovery was started from.
+     *
+     * @param \stdClass $snapshot Snapshot.
+     * @param string $action Predicted account action.
+     * @return bool
+     */
+    public static function reenables_account(\stdClass $snapshot, string $action): bool {
+        if (in_array($action, ['temporaryrevived', 'verificationresent', 'setpassword'], true)) {
+            return true;
+        }
+        return $action === 'normalised' && (int) $snapshot->suspended === 1;
+    }
+
+    /**
+     * Cross-course impact of a course-scoped recovery (empty when there is none).
+     *
+     * @param \stdClass $snapshot Snapshot built for the course scope.
+     * @param int|null $courseid Course scope (null = system scope: no hidden impact by definition).
+     * @return int[] Other courses in which the account would become usable again.
+     */
+    public static function cross_course_impact(\stdClass $snapshot, ?int $courseid): array {
+        if ($courseid === null) {
+            return [];
+        }
+        return self::reenables_account($snapshot, self::predict_account_action($snapshot)) ? $snapshot->othercourses : [];
     }
 
     /**
@@ -151,7 +186,8 @@ final class recovery {
      *
      * @param int $userid User id.
      * @param int|null $courseid Course scope, or null for the system scope.
-     * @param array $options ['reactivate' => int[] ueids, 'reenrol' => int[] courseids].
+     * @param array $options ['reactivate' => int[] ueids, 'reenrol' => int[] courseids,
+     *     'confirmcrosscourse' => bool: the cross-course impact was explicitly confirmed].
      * @param int|null $now Current time.
      * @return \stdClass ->userid, ->outcomes (string[]), ->reason (for failed/noteligible), ->action.
      */
@@ -169,6 +205,22 @@ final class recovery {
             $result->outcomes[] = self::NOT_ELIGIBLE;
             $result->reason = 'nopermission';
             return $result;
+        }
+        // A course-level action must not silently restore access in other courses. With such an
+        // impact, only someone holding the site-wide recovery right may go ahead, and only after
+        // explicitly confirming it; everyone else is referred to the site-wide recovery.
+        $impact = self::cross_course_impact($snapshot, $courseid);
+        if ($impact) {
+            if (!has_capability('tool/flexaccess:recoversystem', \context_system::instance())) {
+                $result->outcomes[] = self::NOT_ELIGIBLE;
+                $result->reason = 'crosscourse';
+                return $result;
+            }
+            if (empty($options['confirmcrosscourse'])) {
+                $result->outcomes[] = self::NOT_ELIGIBLE;
+                $result->reason = 'crosscourseconfirm';
+                return $result;
+            }
         }
         $reactivate = array_map('intval', (array) ($options['reactivate'] ?? []));
         $reenrol = array_map('intval', (array) ($options['reenrol'] ?? []));
@@ -255,17 +307,20 @@ final class recovery {
      * @param int[] $userids User ids.
      * @param int|null $courseid Course scope, or null for the system scope.
      * @param array $options ['reactivateall' => bool (reactivate every suspended/expired enrolment in
-     *     scope), 'reactivate' => [userid => int[] ueids], 'reenrol' => [userid => int[] courseids]].
+     *     scope), 'reactivate' => [userid => int[] ueids], 'reenrol' => [userid => int[] courseids],
+     *     'confirmcrosscourse' => int[] user ids whose cross-course impact was explicitly confirmed].
      * @param int|null $now Current time.
      * @return \stdClass[] Keyed by user id.
      */
     public static function recover_batch(array $userids, ?int $courseid, array $options = [], ?int $now = null): array {
         $now = $now ?? time();
         $results = [];
+        $confirmed = array_map('intval', (array) ($options['confirmcrosscourse'] ?? []));
         foreach (array_unique(array_map('intval', $userids)) as $userid) {
             $useroptions = [
                 'reactivate' => (array) ($options['reactivate'][$userid] ?? []),
                 'reenrol' => (array) ($options['reenrol'][$userid] ?? []),
+                'confirmcrosscourse' => in_array($userid, $confirmed, true),
             ];
             if (!empty($options['reactivateall'])) {
                 $snapshot = self::snapshot($userid, $courseid, $now);
@@ -338,6 +393,16 @@ final class recovery {
             $enrolment->reactivatable = $enrolment->status !== ENROL_USER_ACTIVE || $enrolment->expired;
         }
         $enrolledcourses = array_map(static fn(\stdClass $e): int => $e->courseid, $enrolments);
+        // Courses outside the scope where a FlexAccess enrolment is still effective: an account
+        // recovery started in this course would restore access there as well.
+        $othercourses = [];
+        if ($courseid !== null) {
+            foreach (\enrol_flexaccess\api::get_user_enrolments($userid, null, $now) as $any) {
+                if ($any->courseid !== $courseid && $any->status === ENROL_USER_ACTIVE && !$any->expired) {
+                    $othercourses[] = $any->courseid;
+                }
+            }
+        }
         $unenrolled = [];
         $source = (int) ($account->sourcecourseid ?? 0);
         if ($source > 0 && !in_array($source, $enrolledcourses, true) && ($courseid === null || $courseid === $source)) {
@@ -364,6 +429,8 @@ final class recovery {
             ),
             'enrolments' => $enrolments,
             'unenrolledcourses' => $unenrolled,
+            'othercourses' => array_values(array_unique($othercourses)),
+            'liftable' => \auth_flexaccess\api::suspension_liftable($userid),
         ];
     }
 }

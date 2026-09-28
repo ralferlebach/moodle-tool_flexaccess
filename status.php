@@ -109,6 +109,11 @@ if ($repair !== '') {
                 fullname($user)
             );
         }
+        // Only the list is shortened; the repair itself covers every affected account.
+        $hidden = count($preview['userids']) - count($users);
+        if ($hidden > 0) {
+            $items[] = get_string('healthpreviewmore', 'tool_flexaccess', $hidden);
+        }
     }
     if (!$items && $repair === health::REPAIR_RECONCILE && !empty($preview['report']->repairs)) {
         // Site-wide role repairs have no user list but still need the confirmation.

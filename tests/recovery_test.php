@@ -274,8 +274,81 @@ final class recovery_test extends \advanced_testcase {
         $active = (int) $this->getDataGenerator()->create_user(['auth' => 'flexaccess'])->id;
         account_service::create_authenticated($active, account_service::generate_unique_reference());
         $DB->set_field('user', 'suspended', 1, ['id' => $active]);
+        $DB->set_field('auth_flexaccess_account', 'lockedby', 'flexaccess', ['userid' => $active]);
         $this->assertSame('normalised', recovery::predict_account_action(recovery::snapshot($active)));
         recovery::recover($active, null);
         $this->assertSame([], \auth_flexaccess\api::find_state_mismatches(null, 10, [$active]));
+    }
+
+    /**
+     * AUDIT-001/011: an administrative Moodle suspension survives course and system recovery.
+     *
+     * @return void
+     */
+    public function test_administrative_suspension_is_not_lifted(): void {
+        global $DB;
+        $this->setAdminUser();
+        $userid = (int) $this->getDataGenerator()->create_user(['auth' => 'flexaccess'])->id;
+        account_service::create_authenticated($userid, account_service::generate_unique_reference());
+        enrol_get_plugin('flexaccess')->enrol_user($this->instance, $userid);
+        // Suspended by an administrator: no FlexAccess origin recorded.
+        $DB->set_field('user', 'suspended', 1, ['id' => $userid]);
+        $snapshot = recovery::snapshot($userid, (int) $this->course->id);
+        $this->assertSame('foreignlock', recovery::predict_account_action($snapshot));
+
+        foreach ([(int) $this->course->id, null] as $scope) {
+            $result = recovery::recover($userid, $scope);
+            $this->assertSame([recovery::NOT_ELIGIBLE], $result->outcomes);
+            $this->assertSame('foreignlock', $result->reason);
+            $this->assertEquals(1, $DB->get_field('user', 'suspended', ['id' => $userid]));
+        }
+        // Also an expired temporary account whose suspension predates the expiry stays locked.
+        $temp = $this->visitor(time() + 3600);
+        $DB->set_field('user', 'suspended', 1, ['id' => $temp]);
+        $DB->set_field('auth_flexaccess_account', 'timeexpires', time() - 1, ['userid' => $temp]);
+        account_service::expire_due();
+        $this->assertSame('foreignlock', recovery::recover($temp, null)->reason);
+        $this->assertEquals(1, $DB->get_field('user', 'suspended', ['id' => $temp]));
+        $this->assertSame(account_state::EXPIRED, \auth_flexaccess\api::get_account($temp)->accountstate);
+    }
+
+    /**
+     * AUDIT-002/011: course recovery with an effective enrolment in a second course.
+     *
+     * @return void
+     */
+    public function test_course_recovery_with_cross_course_impact(): void {
+        global $DB;
+        $userid = $this->visitor(time() - 1);
+        $second = $this->getDataGenerator()->create_course();
+        $secondid = \enrol_flexaccess\local\enrol_service::ensure_instance((int) $second->id);
+        enrol_get_plugin('flexaccess')->enrol_user($DB->get_record('enrol', ['id' => $secondid]), $userid);
+        account_service::expire_due();
+
+        // The preview names the impact.
+        $this->setUser($this->teacher);
+        $snapshot = recovery::snapshot($userid, (int) $this->course->id);
+        $this->assertSame([(int) $second->id], recovery::cross_course_impact($snapshot, (int) $this->course->id));
+
+        // A teacher holding only the course right is referred to the site-wide recovery.
+        $result = recovery::recover($userid, (int) $this->course->id);
+        $this->assertSame([recovery::NOT_ELIGIBLE], $result->outcomes);
+        $this->assertSame('crosscourse', $result->reason);
+        $this->assertSame(account_state::EXPIRED, \auth_flexaccess\api::get_account($userid)->accountstate);
+
+        // Someone with the site-wide right must confirm the impact explicitly.
+        $this->setAdminUser();
+        $this->assertSame('crosscourseconfirm', recovery::recover($userid, (int) $this->course->id)->reason);
+        $this->assertSame(account_state::EXPIRED, \auth_flexaccess\api::get_account($userid)->accountstate);
+        $confirmed = recovery::recover($userid, (int) $this->course->id, ['confirmcrosscourse' => true]);
+        $this->assertContains(recovery::RECOVERED, $confirmed->outcomes);
+
+        // Without another effective enrolment there is no impact and no extra step.
+        $single = $this->visitor(time() - 1);
+        account_service::expire_due();
+        $this->setUser($this->teacher);
+        $singlesnapshot = recovery::snapshot($single, (int) $this->course->id);
+        $this->assertSame([], recovery::cross_course_impact($singlesnapshot, (int) $this->course->id));
+        $this->assertContains(recovery::RECOVERED, recovery::recover($single, (int) $this->course->id)->outcomes);
     }
 }

@@ -378,4 +378,91 @@ final class reconciliation_test extends \advanced_testcase {
         $this->assertContains('reconcile_lastscan', $keys);
         $this->assertContains('reconcile_case_' . reconciliation::REVIEW_ADMIN_SUSPENSION, $keys);
     }
+
+    /**
+     * AUDIT-005: accounts of deleted users are classified and cleaned up, not skipped.
+     *
+     * @return void
+     */
+    public function test_deleted_user_is_classified_not_skipped(): void {
+        global $DB;
+        $userid = \auth_flexaccess\api::create_temporary_user(time() + 3600);
+        // Simulate legacy data: the user was deleted before the metadata was removed on deletion.
+        $DB->set_field('user', 'deleted', 1, ['id' => $userid]);
+        $this->assertContains($userid, \auth_flexaccess\api::list_account_userids(0, 1000));
+        $snapshot = reconciliation::inspect_user($userid);
+        $this->assertNotNull($snapshot);
+        $this->assertSame(1, $snapshot->user->deleted);
+        $this->assertSame([reconciliation::RULE_PURGE_DELETED], reconciliation::evaluate($snapshot)['repairs']);
+
+        set_config('reconcile_state', '', 'tool_flexaccess');
+        $state = reconciliation::run(reconciliation::MODE_REPAIR, reconciliation::SOURCE_TASK);
+        $this->assertSame('done', $state->status);
+        $this->assertFalse($DB->record_exists('auth_flexaccess_account', ['userid' => $userid]));
+        $this->assertTrue($DB->record_exists('tool_flexaccess_reconcile_log', [
+            'userid' => $userid, 'rule' => reconciliation::RULE_PURGE_DELETED,
+        ]));
+        // A live account is never purged by this rule.
+        $live = \auth_flexaccess\api::create_temporary_user(time() + 3600);
+        $this->assertFalse(\auth_flexaccess\api::purge_deleted_user_account($live));
+        // Deleting a user through Moodle removes the metadata right away.
+        delete_user($DB->get_record('user', ['id' => $live]));
+        $this->assertFalse($DB->record_exists('auth_flexaccess_account', ['userid' => $live]));
+    }
+
+    /**
+     * AUDIT-007: counts and orphan cases are complete, independent of any list limit.
+     *
+     * @return void
+     */
+    public function test_counts_and_orphans_not_truncated(): void {
+        global $DB;
+        // More inconsistencies than the default list limit (500) of find_state_mismatches().
+        $total = 510;
+        for ($i = 0; $i < $total; $i++) {
+            \auth_flexaccess\api::create_temporary_user(time() + 3600); // Unrestricted: one mismatch each.
+        }
+        $orphan = (int) $this->getDataGenerator()->create_user()->id;
+        role_assign(\enrol_flexaccess\local\participant_role::get_restriction_id(), $orphan, \context_system::instance()->id);
+
+        $counts = \auth_flexaccess\api::count_state_mismatches();
+        $this->assertSame($total, $counts['temporary_unrestricted']);
+        $this->assertSame(1, $counts['orphan_restriction']);
+        $this->assertCount(500, \auth_flexaccess\api::find_state_mismatches(null, 500), 'list stays limited');
+        $this->assertSame([$orphan], \auth_flexaccess\api::find_orphan_restriction_userids());
+
+        // An open orphan case is not resolved while the orphan still exists.
+        $DB->insert_record('tool_flexaccess_reconcile', (object) [
+            'userid' => $orphan, 'code' => reconciliation::REVIEW_ORPHAN_RESTRICTION, 'status' => 'open',
+            'timecreated' => time(), 'timemodified' => time(),
+        ]);
+        set_config('reconcile_state', '', 'tool_flexaccess');
+        reconciliation::run(reconciliation::MODE_REPAIR, reconciliation::SOURCE_TASK);
+        $this->assertSame('open', $DB->get_field('tool_flexaccess_reconcile', 'status', [
+            'userid' => $orphan, 'code' => reconciliation::REVIEW_ORPHAN_RESTRICTION,
+        ]));
+    }
+
+    /**
+     * AUDIT-006/011: an unattributed suspension of an expired account is listed, never attributed.
+     *
+     * @return void
+     */
+    public function test_unknown_lock_origin_becomes_review_case(): void {
+        global $DB;
+        $userid = \auth_flexaccess\api::create_temporary_user(time() + 3600);
+        $DB->set_field('auth_flexaccess_account', 'accountstate', account_state::EXPIRED, ['userid' => $userid]);
+        $DB->set_field('user', 'suspended', 1, ['id' => $userid]);
+        $DB->set_field('auth_flexaccess_account', 'lockedby', null, ['userid' => $userid]);
+        $verdict = reconciliation::evaluate(reconciliation::inspect_user($userid));
+        $this->assertContains(reconciliation::REVIEW_UNKNOWN_LOCK_ORIGIN, $verdict['reviews']);
+        $this->assertNotContains(reconciliation::RULE_UNSUSPEND, $verdict['repairs']);
+        reconciliation::reconcile_user($userid, reconciliation::MODE_REPAIR, reconciliation::SOURCE_TASK);
+        $this->assertNull(\auth_flexaccess\api::get_account($userid)->lockedby);
+        $this->assertEquals(1, $DB->get_field('user', 'suspended', ['id' => $userid]));
+        // With a recorded FlexAccess origin there is nothing to review.
+        $DB->set_field('auth_flexaccess_account', 'lockedby', 'flexaccess', ['userid' => $userid]);
+        $verdict = reconciliation::evaluate(reconciliation::inspect_user($userid));
+        $this->assertNotContains(reconciliation::REVIEW_UNKNOWN_LOCK_ORIGIN, $verdict['reviews']);
+    }
 }

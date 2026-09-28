@@ -87,6 +87,7 @@ if ($confirm && confirm_sesskey()) {
     $results = recovery::recover_batch($userids, $scope, [
         'reactivate' => tool_flexaccess_recover_pairs('reactivate'),
         'reenrol' => tool_flexaccess_recover_pairs('reenrol'),
+        'confirmcrosscourse' => optional_param_array('confirmcrosscourse', [], PARAM_INT),
     ]);
     echo $OUTPUT->header();
     echo $OUTPUT->heading(get_string('recoverresults', 'tool_flexaccess'));
@@ -100,7 +101,10 @@ if ($confirm && confirm_sesskey()) {
             $result->outcomes
         );
         if ($result->reason !== '') {
-            $labels[] = get_string('recoverreason', 'tool_flexaccess', s($result->reason));
+            $key = 'recoverreason_' . $result->reason;
+            $labels[] = get_string_manager()->string_exists($key, 'tool_flexaccess')
+                ? get_string($key, 'tool_flexaccess')
+                : get_string('recoverreason', 'tool_flexaccess', s($result->reason));
         }
         $name = isset($snapshots[$id]) ? s($snapshots[$id]->fullname) : (string) $id;
         $table->data[] = [$name, implode(html_writer::empty_tag('br'), $labels)];
@@ -171,10 +175,29 @@ foreach ($userids as $id) {
             $enrolcell[] = get_string('recoverreenrolrequired', 'tool_flexaccess', $label);
         }
     }
+    $accountcell = get_string('recoveraction_' . $action, 'tool_flexaccess');
+    $impact = $eligible ? recovery::cross_course_impact($snapshot, $scope) : [];
+    if ($impact) {
+        // The account is global: recovering it here also restores access in these other courses.
+        $accountcell .= html_writer::div(
+            get_string('recovercrosscourse', 'tool_flexaccess', count($impact)),
+            'alert alert-warning p-1 my-1'
+        );
+        if (has_capability('tool/flexaccess:recoversystem', context_system::instance())) {
+            $accountcell .= html_writer::checkbox(
+                'confirmcrosscourse[]',
+                $id,
+                false,
+                get_string('recovercrosscourseconfirm', 'tool_flexaccess', count($impact))
+            );
+        } else {
+            $accountcell .= html_writer::div(get_string('recoverreason_crosscourse', 'tool_flexaccess'), 'small');
+        }
+    }
     $table->data[] = [
         s($snapshot->fullname),
         \tool_flexaccess\local\account_labels::state($snapshot->accountstate),
-        get_string('recoveraction_' . $action, 'tool_flexaccess'),
+        $accountcell,
         $enrolcell ? implode(html_writer::empty_tag('br'), $enrolcell) : '-',
     ];
 }

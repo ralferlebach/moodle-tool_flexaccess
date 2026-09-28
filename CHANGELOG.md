@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0 (2026092801) — 2026-09-28 — Restarbeiten aus dem Gesamtaudit
+- **Keine versteckte kursübergreifende Wirkung (AUDIT-002).** Die Konto-Recovery ist global. Eine Recovery aus einem Kurs heraus, die das Konto wieder nutzbar macht, stellt deshalb auch den Zugang in anderen Kursen mit wirksamer FlexAccess-Einschreibung wieder her.
+  - Die Vorschau nennt diese Wirkung.
+  - Nutzer mit nur dem Kursrecht werden an die systemweite Recovery verwiesen.
+  - Nutzer mit dem systemweiten Recht müssen die Wirkung ausdrücklich bestätigen.
+  - Ohne weitere wirksame Einschreibung bleibt der Ablauf wie bisher.
+- **Fremde Sperren bleiben (AUDIT-001).** Die Vorschau zeigt „anderweitig gesperrt“, die Recovery ändert nichts und nennt den Weg über die Moodle-Nutzerverwaltung. Ablehnungsgründe werden als verständlicher Text angezeigt statt als Code.
+- **Gelöschte Nutzer werden klassifiziert statt übersprungen (AUDIT-005).** Der Abgleich läuft über alle Konto-Datensätze. Für gelöschte Nutzer entfernt die sichere Regel `purge_deleted_user` die FlexAccess-Daten und protokolliert das.
+- **Unbekannte Sperrherkunft wird zum Prüffall (AUDIT-006).** Ein gesperrtes Konto, dessen Sperre nicht nachweislich von FlexAccess stammt, erscheint als Prüffall `review_unknown_lock_origin`. Es wird nie automatisch entsperrt. Das Upgrade startet den Abgleich erneut, damit diese Fälle sichtbar werden.
+- **Keine abgeschnittenen Ergebnisse (AUDIT-007).**
+  - Die Zählungen im Systemstatus, die Zahl der automatisch reparierbaren Konten und die Orphan-Prüfung sind vollständig.
+  - Orphan-Prüffälle werden nur geschlossen, wenn die vollständige Liste den Nutzer nicht mehr enthält.
+  - Wo eine Anzeige gekürzt wird (Policy-Konflikte, Reparatur-Vorschau), steht das ausdrücklich dabei, und die Reparatur erfasst trotzdem alle.
+- Version `2026092801`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026092801`.
+
 ## 1.1.0 (2026092800) — 2026-09-28 — Versions-Gleichschritt
 - Keine funktionale Änderung. Abhängigkeiten auf `auth_flexaccess` und `enrol_flexaccess` ≥ `2026092800` angehoben. Version `2026092800`, Release `1.1.0`, `MATURITY_STABLE`.
 
