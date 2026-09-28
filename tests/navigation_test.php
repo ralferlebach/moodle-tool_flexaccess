@@ -43,7 +43,7 @@ final class navigation_test extends \advanced_testcase {
         );
         $this->assertSame(['invitations', 'campaigns'], array_keys($tabs[navigation::OUTREACH]['subtabs']));
         $this->assertSame(['policyoverview', 'managepolicies'], array_keys($tabs[navigation::POLICIES]['subtabs']));
-        $this->assertSame(['systemcheck', 'mailqueue'], array_keys($tabs[navigation::STATUS]['subtabs']));
+        $this->assertSame(['systemcheck', 'lockreview', 'mailqueue'], array_keys($tabs[navigation::STATUS]['subtabs']));
         // Existing endpoints stay the targets, so deep links keep working.
         $this->assertStringEndsWith('/admin/tool/flexaccess/accounts.php', $tabs[navigation::USERS]['url']->out_omit_querystring());
         // Exactly one tab is selected; its main tab is activated so the group row is shown with it.

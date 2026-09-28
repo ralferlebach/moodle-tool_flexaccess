@@ -402,7 +402,10 @@ final class health {
                 'reconcile_case_' . $code,
                 self::WARNING,
                 get_string('reconcile_' . $code, 'tool_flexaccess'),
-                (new \moodle_url('/admin/tool/flexaccess/status.php', ['cases' => $code]))->out(false),
+                // Lock-origin cases are decided in batches on their own page.
+                (in_array($code, reconciliation::LOCK_REVIEWS, true)
+                    ? new \moodle_url('/admin/tool/flexaccess/lockreview.php')
+                    : new \moodle_url('/admin/tool/flexaccess/status.php', ['cases' => $code]))->out(false),
                 null,
                 $count
             );

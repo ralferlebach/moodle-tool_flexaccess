@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 (2026092802) — 2026-09-28 — Sperrherkunft im Batch entscheiden
+- **Neuer Unterreiter „Systemstatus → Sperrherkunft“ (`lockreview.php`, Recht `recoversystem`).** Er listet alle FlexAccess-Konten, deren Moodle-Sperre keine belegte Herkunft hat, typischerweise Altdaten von vor 1.1.0. Die Konten werden per Checkbox ausgewählt, auch alle auf einer Seite auf einmal. Für die ganze Auswahl wird eine Entscheidung getroffen:
+  - „stammt von FlexAccess“ (festhalten, später reaktivieren),
+  - „stammt von FlexAccess, jetzt reaktivieren“ (auf Wunsch einschließlich suspendierter Kurszugänge),
+  - „administrative Entscheidung“ (dauerhaft beibehalten).
+- **Ablauf:** Vorschau, ausdrückliche Bestätigung, dann ein Ergebnis je Konto. Jedes Konto wird in einer eigenen Transaktion verarbeitet. Jede Entscheidung landet mit der handelnden Person im Abgleich-Protokoll.
+- **Prüffälle nur noch bei unbekannter Herkunft.** Eine bestätigte Admin-Sperre erzeugt keinen Fall mehr, auch nicht nach einem erneuten vollständigen Abgleich. Der Systemstatus verlinkt die Sperr-Prüffälle direkt auf die neue Seite.
+- Version `2026092802`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026092802`.
+
 ## 1.1.0 (2026092801) — 2026-09-28 — Restarbeiten aus dem Gesamtaudit
 - **Keine versteckte kursübergreifende Wirkung (AUDIT-002).** Die Konto-Recovery ist global. Eine Recovery aus einem Kurs heraus, die das Konto wieder nutzbar macht, stellt deshalb auch den Zugang in anderen Kursen mit wirksamer FlexAccess-Einschreibung wieder her.
   - Die Vorschau nennt diese Wirkung.

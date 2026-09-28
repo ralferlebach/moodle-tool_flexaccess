@@ -72,7 +72,7 @@ final class reconciliation {
 
     /** Review: the suspension cannot be attributed to FlexAccess; possibly administrative. */
     public const REVIEW_ADMIN_SUSPENSION = 'review_admin_suspension';
-    /** Review: expired/suspended account whose Moodle suspension has no recorded FlexAccess origin. */
+    /** Review: expired/suspended account whose Moodle suspension has no recorded origin. */
     public const REVIEW_UNKNOWN_LOCK_ORIGIN = 'review_unknown_lock_origin';
     /** Review: expired or suspended account that still has an active course enrolment. */
     public const REVIEW_EXPIRED_ACCOUNT = 'review_expired_account';
@@ -227,7 +227,7 @@ final class reconciliation {
         if (
             in_array($account->state, [account_state::EXPIRED, account_state::SUSPENDED], true)
                 && (int) $snapshot->user->suspended === 1
-                && $account->lockedby !== \auth_flexaccess\local\lifecycle::LOCKED_BY_FLEXACCESS
+                && $account->lockedby === null
         ) {
             $reviews[] = self::REVIEW_UNKNOWN_LOCK_ORIGIN;
         }
@@ -284,6 +284,151 @@ final class reconciliation {
             return null;
         }
         return self::process($snapshots[$userid], $mode, $source, $now ?? time());
+    }
+
+    /** Decision: the suspension comes from FlexAccess (it may be lifted by a recovery). */
+    public const DECIDE_FLEXACCESS = 'flexaccess';
+    /** Decision: the suspension is an administrative decision (kept, no longer reported). */
+    public const DECIDE_ADMIN = 'admin';
+    /** Review codes a lock-origin decision settles. */
+    public const LOCK_REVIEWS = [self::REVIEW_UNKNOWN_LOCK_ORIGIN, self::REVIEW_ADMIN_SUSPENSION];
+
+    /**
+     * Users whose suspension origin is still undecided (open review cases), oldest first.
+     *
+     * @param int $limit Maximum number (0 = all).
+     * @return int[]
+     */
+    public static function lock_review_userids(int $limit = 0): array {
+        global $DB;
+        [$insql, $params] = $DB->get_in_or_equal(self::LOCK_REVIEWS, SQL_PARAMS_NAMED);
+        return array_map('intval', $DB->get_fieldset_sql(
+            "SELECT userid FROM {" . self::CASES . "}
+              WHERE status = 'open' AND code $insql
+           GROUP BY userid
+           ORDER BY MIN(timecreated) ASC, userid ASC",
+            $params,
+            0,
+            $limit
+        ));
+    }
+
+    /**
+     * Apply an administrator's decision about the origin of suspensions, for many users at once.
+     *
+     * Each user is handled on its own: the origin is recorded (auth API), the decision is written to
+     * the audit trail with the acting administrator, and the user's review cases are refreshed. With
+     * DECIDE_FLEXACCESS and $recover, the account is then recovered site-wide (see {@see recovery}),
+     * optionally with all its suspended course enrolments. Users without an open lock review, or who
+     * are not suspended any more, are reported as skipped and left unchanged.
+     *
+     * @param int[] $userids User ids.
+     * @param string $decision DECIDE_FLEXACCESS or DECIDE_ADMIN.
+     * @param bool $recover Recover right away (only with DECIDE_FLEXACCESS).
+     * @param bool $reactivateall Also reactivate suspended FlexAccess enrolments when recovering.
+     * @param int|null $now Current time.
+     * @return array<int, string> userid => 'decided', 'recovered', 'skipped' or 'failed'.
+     */
+    public static function decide_lock_origin(
+        array $userids,
+        string $decision,
+        bool $recover = false,
+        bool $reactivateall = false,
+        ?int $now = null
+    ): array {
+        $now = $now ?? time();
+        if (!in_array($decision, [self::DECIDE_FLEXACCESS, self::DECIDE_ADMIN], true)) {
+            throw new \coding_exception('Unknown lock-origin decision: ' . $decision);
+        }
+        require_capability('tool/flexaccess:recoversystem', \context_system::instance());
+        $open = array_flip(self::lock_review_userids());
+        $results = [];
+        foreach (array_unique(array_map('intval', $userids)) as $userid) {
+            $snapshot = self::inspect_users([$userid], $now)[$userid] ?? null;
+            if (!isset($open[$userid]) || $snapshot === null) {
+                $results[$userid] = 'skipped';
+                continue;
+            }
+            try {
+                $results[$userid] = self::decide_one($snapshot, $decision, $recover, $reactivateall, $now);
+            } catch (\Throwable $e) {
+                $results[$userid] = 'failed';
+            }
+        }
+        return $results;
+    }
+
+    /**
+     * Apply a lock-origin decision to one user atomically.
+     *
+     * @param \stdClass $snapshot Snapshot of the user.
+     * @param string $decision DECIDE_FLEXACCESS or DECIDE_ADMIN.
+     * @param bool $recover Recover right away (only with DECIDE_FLEXACCESS).
+     * @param bool $reactivateall Also reactivate suspended FlexAccess enrolments when recovering.
+     * @param int $now Current time.
+     * @return string 'decided', 'recovered' or 'skipped'.
+     */
+    private static function decide_one(
+        \stdClass $snapshot,
+        string $decision,
+        bool $recover,
+        bool $reactivateall,
+        int $now
+    ): string {
+        global $DB;
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            $outcome = self::decide_in_transaction($snapshot, $decision, $recover, $reactivateall, $now);
+            $transaction->allow_commit();
+        } catch (\Throwable $e) {
+            // Rolls back this user's decision completely and rethrows; the caller reports 'failed'.
+            $transaction->rollback($e);
+        }
+        return $outcome;
+    }
+
+    /**
+     * Body of {@see self::decide_one()}, run inside its transaction.
+     *
+     * @param \stdClass $snapshot Snapshot of the user.
+     * @param string $decision Decision.
+     * @param bool $recover Recover right away.
+     * @param bool $reactivateall Also reactivate suspended FlexAccess enrolments.
+     * @param int $now Current time.
+     * @return string Outcome.
+     */
+    private static function decide_in_transaction(
+        \stdClass $snapshot,
+        string $decision,
+        bool $recover,
+        bool $reactivateall,
+        int $now
+    ): string {
+        $userid = $snapshot->userid;
+        $before = self::describe($snapshot);
+        if (!\auth_flexaccess\api::attribute_suspension($userid, $decision)) {
+            // Not suspended any more: nothing to decide; its cases are refreshed below.
+            $outcome = 'skipped';
+        } else {
+            self::audit($userid, 'attribute_lock_' . $decision, self::SOURCE_STATUS, $before, 'lockedby -> ' . $decision, $now);
+            $outcome = 'decided';
+            if ($decision === self::DECIDE_FLEXACCESS && $recover) {
+                $recovered = recovery::recover($userid, null, ['reactivate' => $reactivateall ? array_map(
+                    static fn(\stdClass $e): int => $e->ueid,
+                    array_filter($snapshot->enrolments, static fn(\stdClass $e): bool =>
+                        $e->status !== ENROL_USER_ACTIVE || $e->expired)
+                ) : []], $now);
+                if (in_array(recovery::FAILED, $recovered->outcomes, true)) {
+                    throw new \moodle_exception('invalidrequest', 'error');
+                }
+                $outcome = in_array(recovery::RECOVERED, $recovered->outcomes, true) ? 'recovered' : 'decided';
+            }
+        }
+        $after = self::inspect_users([$userid], $now)[$userid] ?? null;
+        if ($after !== null) {
+            self::process($after, self::MODE_REPAIR, self::SOURCE_STATUS, $now);
+        }
+        return $outcome;
     }
 
     /**
