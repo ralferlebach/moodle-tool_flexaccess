@@ -28,7 +28,7 @@ Requirements
 This plugin requires Moodle 4.5+
 
 It also requires the other FlexAccess plugins. All four are released together and must be installed
-in the same version (currently 1.1.0 / 2026092803):
+in the same version (currently 1.1.0 / 2026092804):
 
 * **auth_flexaccess (FlexAccess authentication)** - required dependency, declared in version.php\
   https://github.com/ralferlebach/moodle-auth_flexaccess
@@ -65,12 +65,16 @@ Site administration -> Users -> Accounts -> FlexAccess administration
 
 There, you find:
 
-* **Dashboard and account list** - all FlexAccess accounts with their state, searchable, with conversion to permanent accounts.
+* **Overview** - key figures, open verifications, accounts waiting for a password and system warnings.
+* **Users** - all FlexAccess accounts with account and course-access state side by side, filters for frozen accounts, batch recovery, a drill-down per user and conversion to permanent accounts.
+* **System status** - readiness across all four plugins (activation, roles, lifecycle invariants, scheduled tasks, policy conflicts, mail funnel) with previewed repairs, and **Suspension origin** to decide in batches where suspensions of unknown origin come from.
 * **Mail queue** - what is queued, sent or failed, with a manual run.
 * **Policies** - the site and category level of the FlexAccess access policy.
 * **Invitations** - person-bound, single-use invitations including reminders and revocation.
 * **Campaigns** - shareable links granting access to a course, with an optional redemption limit.
 * **Anonymous access lists** - batches of generated accounts for a course, downloadable as one package containing a spreadsheet, a printable list and login cards.
+
+In a course, **More > FlexAccess** opens the course-level management with the tabs Users (with recovery limited to that course), Access lists and Restrictions.
 
 If you want to learn more about using admin tool plugins in Moodle, please see https://docs.moodle.org/en/Admin_tools.
 
@@ -95,6 +99,12 @@ This plugin also introduces these additional capabilities:
 * **tool/flexaccess:issuebatchcredentials** - Issue the credentials of an access list. This rotates passwords and is therefore a separate right. By default, this is assigned to managers.
 * **tool/flexaccess:convertbatchaccounts** - Convert the accounts of an access list into permanent accounts. By default, this is assigned to managers.
 * **tool/flexaccess:requestbatches** - Request an anonymous access list for a course. By default, this is assigned to editing teachers.
+* **tool/flexaccess:viewcourseusers** - See the FlexAccess users of a course with their account and course-access state (Course > More > FlexAccess). By default, this is assigned to managers and editing teachers.
+* **tool/flexaccess:recovercourse** - Recover frozen FlexAccess accounts and reactivate their enrolments within one course. By default, this is assigned to managers and editing teachers.
+* **tool/flexaccess:reenrol** - Enrol a visitor again after their FlexAccess enrolment was removed; a separate, confirmed action. By default, this is assigned to managers.
+* **tool/flexaccess:recoversystem** - Recover frozen FlexAccess accounts site-wide and in batches, decide the origin of suspensions, and confirm recoveries that also restore access in other courses. By default, this is assigned to managers.
+* **tool/flexaccess:viewsystemstatus** - Read the FlexAccess system status. By default, this is assigned to managers.
+* **tool/flexaccess:repairsystem** - Run the previewed, deterministic repairs of the system status. By default, this is assigned to managers.
 
 
 Scheduled Tasks

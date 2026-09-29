@@ -166,11 +166,14 @@ if ($invites) {
                     'post'
                 ));
             }
-            $actions[] = $OUTPUT->render(new single_button(
+            $revokebutton = new single_button(
                 new moodle_url($returnurl, ['action' => 'revoke', 'id' => $invite->id]),
                 get_string('inviterevoke', 'tool_flexaccess'),
                 'post'
-            ));
+            );
+            // The invitation link stops working for good: ask first.
+            $revokebutton->add_confirm_action(get_string('inviterevokeconfirm', 'tool_flexaccess', s($invite->email)));
+            $actions[] = $OUTPUT->render($revokebutton);
         }
         $sent = (int) $invite->timesent > 0 ? userdate((int) $invite->timesent) : '-';
         $table->data[] = [

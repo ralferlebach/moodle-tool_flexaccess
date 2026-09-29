@@ -109,9 +109,12 @@ if ($overrides) {
         $name = $categories[$catid] ?? ('#' . $catid);
         $editurl = new moodle_url($returnurl, ['categoryid' => $catid]);
         $deleteurl = new moodle_url($returnurl, ['categoryid' => $catid, 'delete' => 1]);
+        $policydelete = new single_button($deleteurl, get_string('delete'), 'post');
+        // Changes access for every course in the category: ask first.
+        $policydelete->add_confirm_action(get_string('policydeleteconfirm', 'tool_flexaccess'));
         $actions = html_writer::link($editurl, get_string('edit'))
             . ' · '
-            . $OUTPUT->render(new single_button($deleteurl, get_string('delete'), 'post'));
+            . $OUTPUT->render($policydelete);
         $table->data[] = [
             format_string($name),
             $flagword((int) $row->allowtemporary),

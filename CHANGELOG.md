@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0 (2026092804) — 2026-09-28 — Review gegen Checkliste und Lessons Learnt (Schritt 3)
+- **Nachfrage vor destruktiven Aktionen.** Einladung widerrufen und Kategorie-Richtlinie löschen fragen jetzt vorher nach. Die Meldung nennt jeweils die Folge: Der Einladungslink wird ungültig, bzw. der Zugang ändert sich für alle Kurse der Kategorie.
+- **README vollständig (Lesson 30).** Die sechs Rechte aus 1.1.0 sind jetzt mit ihren Standardrollen dokumentiert, dazu die neuen Bereiche Übersicht, Nutzer, Systemstatus, Sperrherkunft und die Kursverwaltung unter „Mehr → FlexAccess“.
+- Drei verwaiste Strings einer früheren Download-Oberfläche entfernt (Lesson 14).
+- Version `2026092804`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026092804`.
+
 ## 1.1.0 (2026092803) — 2026-09-28 — Review gegen Checkliste und Lessons Learnt (Schritt 1 und 2)
 - **Nutzerlisten ohne N+1 (Lesson 17).** Die Snapshots für die System- und Kursliste lasen bisher jeden Nutzer einzeln, gemessen 11–12 Abfragen pro Nutzer. Sie nutzen jetzt die Sammelabfragen aus auth und enrol, und Kursnamen werden einmal vorgeladen.
   - Ergebnis: konstant 15 Abfragen, unabhängig von der Listenlänge. Bei 50 Nutzern 15 statt 551, bei 100 Nutzern 15 statt 1101.
