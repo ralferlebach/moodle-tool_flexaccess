@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0 (2026092805) — 2026-09-29 — Behat für Recovery und Sperrherkunft
+- **Neues Feature `recovery.feature`** mit zwei Szenarien über die echten Seiten:
+  - Eine Lehrkraft reaktiviert einen eingefrorenen Besucher ihres Kurses: Liste, Auswahl, Vorschau, Bestätigung, Ergebnis.
+  - Die Administration entscheidet die Herkunft einer Altsperre im Batch und reaktiviert dabei.
+- **Neuer Behat-Kontext `behat_tool_flexaccess`:** eingefrorenes Konto im Kurs anlegen, Sperrherkunft unbekannt machen, Kurs-Nutzerliste öffnen.
+- Per Gegenprobe belegt: Entfällt die Reaktivierung in der Batch-Entscheidung, schlägt das Szenario an.
+- Version `2026092805`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026092805`.
+
 ## 1.1.0 (2026092804) — 2026-09-28 — Review gegen Checkliste und Lessons Learnt (Schritt 3)
 - **Nachfrage vor destruktiven Aktionen.** Einladung widerrufen und Kategorie-Richtlinie löschen fragen jetzt vorher nach. Die Meldung nennt jeweils die Folge: Der Einladungslink wird ungültig, bzw. der Zugang ändert sich für alle Kurse der Kategorie.
 - **README vollständig (Lesson 30).** Die sechs Rechte aus 1.1.0 sind jetzt mit ihren Standardrollen dokumentiert, dazu die neuen Bereiche Übersicht, Nutzer, Systemstatus, Sperrherkunft und die Kursverwaltung unter „Mehr → FlexAccess“.
