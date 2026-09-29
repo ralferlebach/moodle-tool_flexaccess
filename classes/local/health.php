@@ -303,7 +303,11 @@ final class health {
                 'policy_' . $conflict->enrolid . '_' . $conflict->flag,
                 self::WARNING,
                 get_string('health_policy_' . $conflict->cause, 'tool_flexaccess', (object) [
-                    'course' => format_string($course->fullname),
+                    // Plain text: labels are escaped exactly once, where they are output.
+                    'course' => format_string($course->fullname, true, [
+                        'context' => \context_course::instance((int) $course->id),
+                        'escape' => false,
+                    ]),
                     'method' => get_string('mode' . $conflict->flag, 'enrol_flexaccess'),
                 ]),
                 (new \moodle_url('/enrol/editinstance.php', [

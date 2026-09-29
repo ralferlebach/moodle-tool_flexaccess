@@ -73,7 +73,8 @@ if (!$userids) {
  */
 function tool_flexaccess_recover_pairs(string $name): array {
     $pairs = [];
-    foreach (optional_param_array($name, [], PARAM_RAW) as $raw) {
+    // Each value is "userid:id"; anything else is discarded by the strict pattern below.
+    foreach (optional_param_array($name, [], PARAM_NOTAGS) as $raw) {
         if (preg_match('/^(\d+):(\d+)$/', (string) $raw, $m)) {
             $pairs[(int) $m[1]][] = (int) $m[2];
         }
@@ -117,6 +118,7 @@ if ($confirm && confirm_sesskey()) {
 
 // Preview: what would change, per user; enrolment changes are explicit checkboxes.
 $snapshots = recovery::snapshots($userids, $scope);
+\tool_flexaccess\local\user_presenter::prefetch_courses($snapshots);
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('recovertitle', 'tool_flexaccess'));
 echo $tabs;
@@ -147,7 +149,7 @@ foreach ($userids as $id) {
     $action = $eligible ? recovery::predict_account_action($snapshot) : 'outofscope';
     $enrolcell = [];
     foreach ($snapshot->enrolments as $enrolment) {
-        $label = format_string(get_course($enrolment->courseid)->shortname) . ': ' . get_string(
+        $label = \tool_flexaccess\local\user_presenter::course_name($enrolment->courseid) . ': ' . get_string(
             $enrolment->status === ENROL_USER_ACTIVE ? 'enrolactive' : 'enrolsuspended',
             'tool_flexaccess'
         ) . ($enrolment->timeend > 0 ? ' (' . userdate($enrolment->timeend) . ')' : '');
@@ -163,7 +165,7 @@ foreach ($userids as $id) {
         }
     }
     foreach ($snapshot->unenrolledcourses as $unenrolled) {
-        $label = format_string(get_course($unenrolled)->shortname);
+        $label = \tool_flexaccess\local\user_presenter::course_name($unenrolled);
         if ($eligible && has_capability('tool/flexaccess:reenrol', context_course::instance($unenrolled))) {
             $enrolcell[] = html_writer::checkbox(
                 'reenrol[]',

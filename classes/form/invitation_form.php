@@ -51,7 +51,7 @@ final class invitation_form extends \moodleform {
             get_string('inviteemails', 'tool_flexaccess'),
             ['rows' => 6, 'cols' => 50]
         );
-        $mform->setType('emails', PARAM_RAW);
+        $mform->setType('emails', PARAM_TEXT);
         $mform->addRule('emails', get_string('required'), 'required', null, 'client');
         $mform->addHelpButton('emails', 'inviteemails', 'tool_flexaccess');
 

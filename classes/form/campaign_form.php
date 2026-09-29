@@ -78,7 +78,7 @@ final class campaign_form extends \moodleform {
         $mform->hideIf('gatepassword', 'gatemode', 'neq', 'password');
 
         $mform->addElement('textarea', 'gatedomains', get_string('campaigngatedomains', 'tool_flexaccess'));
-        $mform->setType('gatedomains', PARAM_RAW);
+        $mform->setType('gatedomains', PARAM_TEXT);
         $mform->hideIf('gatedomains', 'gatemode', 'neq', 'domain');
 
         $this->add_action_buttons();

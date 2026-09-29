@@ -62,7 +62,7 @@ final class recovery {
         if (!isset($accounts[$userid])) {
             return null;
         }
-        return self::build_snapshot($accounts[$userid], $courseid, $now);
+        return self::snapshots([$userid], $courseid, $now)[$userid] ?? null;
     }
 
     /**
@@ -75,9 +75,25 @@ final class recovery {
      */
     public static function snapshots(array $userids, ?int $courseid = null, ?int $now = null): array {
         $now = $now ?? time();
+        $accounts = \auth_flexaccess\api::get_accounts($userids);
+        if (!$accounts) {
+            return [];
+        }
+        // Everything a snapshot needs is read in a fixed number of queries for the whole list, not per
+        // user: list pages must not grow their query count with the number of users shown.
+        $ids = array_map('intval', array_keys($accounts));
+        $facts = (object) [
+            'enrolments' => \enrol_flexaccess\api::get_enrolments_for_users($ids, $now),
+            'credential' => \auth_flexaccess\api::credential_statuses($ids, $now),
+            'verification' => array_flip(\auth_flexaccess\api::verification_pending_userids($ids)),
+            'mismatches' => [],
+        ];
+        foreach (\auth_flexaccess\api::find_state_mismatches($now, 0, $ids) as $mismatch) {
+            $facts->mismatches[(int) $mismatch->userid][] = $mismatch->code;
+        }
         $out = [];
-        foreach (\auth_flexaccess\api::get_accounts($userids) as $userid => $account) {
-            $out[(int) $userid] = self::build_snapshot($account, $courseid, $now);
+        foreach ($accounts as $userid => $account) {
+            $out[(int) $userid] = self::build_snapshot($account, $courseid, $now, $facts);
         }
         return $out;
     }
@@ -379,30 +395,29 @@ final class recovery {
     }
 
     /**
-     * Assemble a snapshot from an account row.
+     * Assemble a snapshot from an account row and the facts read for the whole list.
      *
      * @param \stdClass $account Account row joined with the user.
      * @param int|null $courseid Course scope.
      * @param int $now Current time.
+     * @param \stdClass $facts Bulk facts (enrolments, credential, verification, mismatches), by user id.
      * @return \stdClass
      */
-    private static function build_snapshot(\stdClass $account, ?int $courseid, int $now): \stdClass {
+    private static function build_snapshot(\stdClass $account, ?int $courseid, int $now, \stdClass $facts): \stdClass {
         $userid = (int) $account->userid;
-        $enrolments = \enrol_flexaccess\api::get_user_enrolments($userid, $courseid, $now);
-        foreach ($enrolments as $enrolment) {
-            $enrolment->reactivatable = $enrolment->status !== ENROL_USER_ACTIVE || $enrolment->expired;
-        }
-        $enrolledcourses = array_map(static fn(\stdClass $e): int => $e->courseid, $enrolments);
-        // Courses outside the scope where a FlexAccess enrolment is still effective: an account
-        // recovery started in this course would restore access there as well.
+        $all = $facts->enrolments[$userid] ?? [];
+        $enrolments = [];
         $othercourses = [];
-        if ($courseid !== null) {
-            foreach (\enrol_flexaccess\api::get_user_enrolments($userid, null, $now) as $any) {
-                if ($any->courseid !== $courseid && $any->status === ENROL_USER_ACTIVE && !$any->expired) {
-                    $othercourses[] = $any->courseid;
-                }
+        foreach ($all as $enrolment) {
+            if ($courseid === null || $enrolment->courseid === $courseid) {
+                $enrolment->reactivatable = $enrolment->status !== ENROL_USER_ACTIVE || $enrolment->expired;
+                $enrolments[] = $enrolment;
+            } else if ($enrolment->status === ENROL_USER_ACTIVE && !$enrolment->expired) {
+                // Effective elsewhere: an account recovery started in this course restores it too.
+                $othercourses[] = $enrolment->courseid;
             }
         }
+        $enrolledcourses = array_map(static fn(\stdClass $e): int => $e->courseid, $enrolments);
         $unenrolled = [];
         $source = (int) ($account->sourcecourseid ?? 0);
         if ($source > 0 && !in_array($source, $enrolledcourses, true) && ($courseid === null || $courseid === $source)) {
@@ -411,6 +426,7 @@ final class recovery {
         $lapsed = $account->accountstate === account_state::EXPIRED
             || ($account->accounttype === account_type::TEMPORARY_USER
                 && !empty($account->timeexpires) && (int) $account->timeexpires <= $now);
+        $suspended = (int) $account->suspended;
         return (object) [
             'userid' => $userid,
             'fullname' => trim($account->firstname . ' ' . $account->lastname),
@@ -420,17 +436,16 @@ final class recovery {
             'accountstate' => (string) $account->accountstate,
             'timeexpires' => (int) ($account->timeexpires ?? 0),
             'accountlapsed' => $lapsed,
-            'suspended' => (int) $account->suspended,
-            'verificationpending' => \auth_flexaccess\api::verification_pending($userid),
-            'credentialstatus' => \auth_flexaccess\api::credential_status($userid, $now),
-            'mismatches' => array_map(
-                static fn(\stdClass $m): string => $m->code,
-                \auth_flexaccess\api::find_state_mismatches($now, 20, [$userid])
-            ),
+            'suspended' => $suspended,
+            'verificationpending' => isset($facts->verification[$userid]),
+            'credentialstatus' => $facts->credential[$userid] ?? 'none',
+            'mismatches' => $facts->mismatches[$userid] ?? [],
             'enrolments' => $enrolments,
             'unenrolledcourses' => $unenrolled,
             'othercourses' => array_values(array_unique($othercourses)),
-            'liftable' => \auth_flexaccess\api::suspension_liftable($userid),
+            // Same rule as the lifecycle: only a suspension FlexAccess set is liftable.
+            'liftable' => $suspended !== 1
+                || ($account->lockedby ?? null) === \auth_flexaccess\local\lifecycle::LOCKED_BY_FLEXACCESS,
         ];
     }
 }

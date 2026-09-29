@@ -32,6 +32,8 @@ use tool_flexaccess\local\recovery;
 use tool_flexaccess\local\user_presenter;
 
 $courseid = required_param('courseid', PARAM_INT);
+$page = optional_param('page', 0, PARAM_INT);
+$perpage = 100;
 
 $course = get_course($courseid);
 require_login($course);
@@ -53,7 +55,11 @@ if (!has_capability('tool/flexaccess:viewcourseusers', $context)) {
     redirect(reset($tabs)['url']);
 }
 
-$snapshots = recovery::snapshots(recovery::course_userids($courseid), $courseid);
+// Paged: a course may have thousands of FlexAccess visitors.
+$alluserids = recovery::course_userids($courseid);
+sort($alluserids);
+$total = count($alluserids);
+$snapshots = recovery::snapshots(array_slice($alluserids, $page * $perpage, $perpage), $courseid);
 $canrecover = has_capability('tool/flexaccess:recovercourse', $context);
 
 echo $OUTPUT->header();
@@ -86,4 +92,5 @@ if ($canrecover) {
 } else {
     echo html_writer::table($table);
 }
+echo $OUTPUT->paging_bar($total, $page, $perpage, $pageurl);
 echo $OUTPUT->footer();

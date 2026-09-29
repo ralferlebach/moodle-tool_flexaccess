@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 (2026092803) — 2026-09-28 — Review gegen Checkliste und Lessons Learnt (Schritt 1 und 2)
+- **Nutzerlisten ohne N+1 (Lesson 17).** Die Snapshots für die System- und Kursliste lasen bisher jeden Nutzer einzeln, gemessen 11–12 Abfragen pro Nutzer. Sie nutzen jetzt die Sammelabfragen aus auth und enrol, und Kursnamen werden einmal vorgeladen.
+  - Ergebnis: konstant 15 Abfragen, unabhängig von der Listenlänge. Bei 50 Nutzern 15 statt 551, bei 100 Nutzern 15 statt 1101.
+  - Ein Budget-Test hält das fest und schlägt nachweislich an, sobald wieder eine Abfrage pro Nutzer hinzukommt.
+- **Kurssicht mit Seitenaufteilung:** 100 Nutzer pro Seite. Vorher war sie unbegrenzt.
+- **Kein doppeltes Escaping im Systemstatus.** Kursnamen in Meldungen werden als reiner Text gebaut und nur bei der Ausgabe escaped. Vorher wurde aus „Kurs & Co“ die Anzeige „Kurs &amp;amp; Co“.
+- **`PARAM_RAW` verengt (Lesson 7):** Domainliste der Kampagnen und Adressliste der Einladungen nutzen `PARAM_TEXT`, die Auswahlwerte der Recovery `PARAM_NOTAGS` mit striktem Muster.
+- Version `2026092803`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026092803`.
+
 ## 1.1.0 (2026092802) — 2026-09-28 — Sperrherkunft im Batch entscheiden
 - **Neuer Unterreiter „Systemstatus → Sperrherkunft“ (`lockreview.php`, Recht `recoversystem`).** Er listet alle FlexAccess-Konten, deren Moodle-Sperre keine belegte Herkunft hat, typischerweise Altdaten von vor 1.1.0. Die Konten werden per Checkbox ausgewählt, auch alle auf einer Seite auf einmal. Für die ganze Auswahl wird eine Entscheidung getroffen:
   - „stammt von FlexAccess“ (festhalten, später reaktivieren),

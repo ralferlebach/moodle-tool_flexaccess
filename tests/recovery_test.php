@@ -351,4 +351,37 @@ final class recovery_test extends \advanced_testcase {
         $this->assertSame([], recovery::cross_course_impact($singlesnapshot, (int) $this->course->id));
         $this->assertContains(recovery::RECOVERED, recovery::recover($single, (int) $this->course->id)->outcomes);
     }
+
+    /**
+     * Query budget (Lessons Learnt 17): list snapshots cost a fixed number of queries, not one set
+     * per user. Measured 11-12 queries per user before; the budget allows no per-user growth.
+     *
+     * @return void
+     */
+    public function test_snapshot_query_budget_is_constant(): void {
+        global $DB;
+        $this->setAdminUser();
+        $small = [];
+        $large = [];
+        for ($i = 0; $i < 40; $i++) {
+            $id = $this->visitor(time() + 3600);
+            if ($i < 5) {
+                $small[] = $id;
+            }
+            $large[] = $id;
+        }
+        foreach ([null, (int) $this->course->id] as $scope) {
+            $before = $DB->perf_get_queries();
+            recovery::snapshots($small, $scope);
+            $fewcost = $DB->perf_get_queries() - $before;
+            $before = $DB->perf_get_queries();
+            $snapshots = recovery::snapshots($large, $scope);
+            local\user_presenter::table($snapshots, $scope, true);
+            $manycost = $DB->perf_get_queries() - $before;
+            $this->assertCount(40, $snapshots);
+            $this->assertLessThanOrEqual(20, $manycost, 'Snapshot budget exceeded');
+            // 8x the users must not cost noticeably more queries.
+            $this->assertLessThanOrEqual($fewcost + 3, $manycost);
+        }
+    }
 }

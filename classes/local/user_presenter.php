@@ -28,6 +28,48 @@ namespace tool_flexaccess\local;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 final class user_presenter {
+    /** @var array<int, string> Course short names prefetched for the rows being rendered. */
+    private static array $courses = [];
+
+    /**
+     * Prefetch the short names of every course the snapshots refer to (one query for the list).
+     *
+     * @param \stdClass[] $snapshots Snapshots.
+     * @return void
+     */
+    public static function prefetch_courses(array $snapshots): void {
+        global $DB;
+        $ids = [];
+        foreach ($snapshots as $snapshot) {
+            foreach ($snapshot->enrolments as $enrolment) {
+                $ids[$enrolment->courseid] = true;
+            }
+            foreach ($snapshot->unenrolledcourses as $courseid) {
+                $ids[$courseid] = true;
+            }
+        }
+        $missing = array_diff(array_keys($ids), array_keys(self::$courses));
+        if ($missing) {
+            foreach ($DB->get_records_list('course', 'id', $missing, '', 'id, shortname') as $course) {
+                self::$courses[(int) $course->id] = format_string($course->shortname, true, [
+                    'context' => \context_course::instance((int) $course->id),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Short name of a course, from the prefetched set (falls back to a single lookup).
+     *
+     * @param int $courseid Course id.
+     * @return string Formatted (escaped) short name.
+     */
+    public static function course_name(int $courseid): string {
+        if (!isset(self::$courses[$courseid])) {
+            self::$courses[$courseid] = format_string(get_course($courseid)->shortname);
+        }
+        return self::$courses[$courseid];
+    }
     /**
      * Build the table for a set of snapshots.
      *
@@ -55,6 +97,7 @@ final class user_presenter {
             get_string('accountactions', 'tool_flexaccess'),
         ]);
         $table->head = $head;
+        self::prefetch_courses($snapshots);
         foreach ($snapshots as $snapshot) {
             $table->data[] = self::row($snapshot, $courseid, $selectable);
         }
@@ -74,7 +117,7 @@ final class user_presenter {
         $enrolend = [];
         $access = [];
         foreach ($snapshot->enrolments as $enrolment) {
-            $prefix = $courseid === null ? format_string(get_course($enrolment->courseid)->shortname) . ': ' : '';
+            $prefix = $courseid === null ? self::course_name($enrolment->courseid) . ': ' : '';
             $enrolstatus[] = $prefix . get_string(
                 $enrolment->status === ENROL_USER_ACTIVE ? 'enrolactive' : 'enrolsuspended',
                 'tool_flexaccess'
@@ -83,7 +126,7 @@ final class user_presenter {
             $access[] = self::status_badge(recovery::access_status($snapshot, $enrolment));
         }
         foreach ($snapshot->unenrolledcourses as $unenrolled) {
-            $prefix = $courseid === null ? format_string(get_course($unenrolled)->shortname) . ': ' : '';
+            $prefix = $courseid === null ? self::course_name($unenrolled) . ': ' : '';
             $enrolstatus[] = $prefix . get_string('enrolremoved', 'tool_flexaccess');
             $enrolend[] = '-';
         }
