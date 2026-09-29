@@ -173,6 +173,7 @@ $string['convertinvalidemail'] = 'Enter a valid email address.';
 $string['convertlastname'] = 'Last name';
 $string['convertpendingnote'] = 'The account becomes a permanent identity at once, but it only becomes active when the person has set a password through the link that is mailed to them. Until then it cannot be used to log in, and the user view shows the state of the set-password mail.';
 $string['convertstatusemailtaken'] = 'That email address is already in use by another account.';
+$string['convertstatusforeignlock'] = 'The Moodle user is suspended outside FlexAccess (e.g. by an administrator). Lift the suspension in the user administration first; nothing was converted.';
 $string['convertstatusinvalidemail'] = 'The email address is not valid.';
 $string['convertstatusnotapplicable'] = 'This account is no longer a temporary account.';
 $string['courseaccesses'] = 'FlexAccess course accesses';

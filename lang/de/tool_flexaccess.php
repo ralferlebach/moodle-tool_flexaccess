@@ -173,6 +173,7 @@ $string['convertinvalidemail'] = 'Geben Sie eine gültige E-Mail-Adresse ein.';
 $string['convertlastname'] = 'Nachname';
 $string['convertpendingnote'] = 'Das Konto wird sofort zu einer dauerhaften Identität, aber erst aktiv, wenn die Person über den zugesandten Link ein Passwort gesetzt hat. Bis dahin ist keine Anmeldung möglich; die Nutzeransicht zeigt den Stand der Passwort-Mail.';
 $string['convertstatusemailtaken'] = 'Diese E-Mail-Adresse wird bereits von einem anderen Konto verwendet.';
+$string['convertstatusforeignlock'] = 'Der Moodle-Nutzer ist außerhalb von FlexAccess gesperrt (z. B. durch die Administration). Heben Sie die Sperre zuerst in der Nutzerverwaltung auf; es wurde nichts konvertiert.';
 $string['convertstatusinvalidemail'] = 'Die E-Mail-Adresse ist ungültig.';
 $string['convertstatusnotapplicable'] = 'Dieses Konto ist kein temporäres Konto mehr.';
 $string['courseaccesses'] = 'FlexAccess-Kurszugänge';

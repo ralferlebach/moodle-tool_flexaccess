@@ -1,7 +1,8 @@
 # Changelog
 
-## 1.1.0 (2026092900) — 2026-09-29 — Versions-Gleichschritt
-- Keine Codeänderung. Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026092900`. Version `2026092900`, Release `1.1.0`, `MATURITY_STABLE`.
+## 1.1.0 (2026092900) — 2026-09-29 — Hinweis bei gesperrten Nutzern in der Konvertierung
+- Konvertierung: Neuer Hinweis `convertstatusforeignlock`, wenn der Moodle-Nutzer außerhalb von FlexAccess gesperrt ist; es wird dann nichts konvertiert (REST-001).
+- Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026092900`. Version `2026092900`, Release `1.1.0`, `MATURITY_STABLE`.
 
 ## 1.1.0 (2026092805) — 2026-09-29 — Behat für Recovery und Sperrherkunft
 - **Neues Feature `recovery.feature`** mit zwei Szenarien über die echten Seiten:
