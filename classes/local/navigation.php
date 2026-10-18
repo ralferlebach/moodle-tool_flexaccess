@@ -75,6 +75,7 @@ final class navigation {
             self::STATUS => [$str('tabstatus'), [
                 'systemcheck' => ['viewsystemstatus', $url('status.php'), $str('tabsystemcheck')],
                 'lockreview' => ['recoversystem', $url('lockreview.php'), $str('tablockreview')],
+                'ltiidentities' => ['recoversystem', $url('ltiidentities.php'), $str('tabltiidentities')],
                 'mailqueue' => ['managemailqueue', $url('mailqueue.php'), $str('mailqueue')],
             ]],
         ];

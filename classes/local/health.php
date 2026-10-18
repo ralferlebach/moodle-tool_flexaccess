@@ -82,6 +82,7 @@ final class health {
         $sections['policies'] = self::check_policies();
         $sections['mail'] = self::check_mail($now);
         $sections['reconciliation'] = self::check_reconciliation($now);
+        $sections['lti'] = self::check_lti();
         return $sections;
     }
 
@@ -227,6 +228,19 @@ final class health {
                 $missingrole
             );
         }
+        $multiple = \enrol_flexaccess\api::count_multiple_instances();
+        if ($multiple > 0) {
+            // Exactly one FlexAccess method per course is an invariant; which one is right is an
+            // administrator's decision, so this is shown, not repaired.
+            $items[] = self::item(
+                'invariant_multipleinstances',
+                self::ERROR,
+                get_string('health_multipleinstances', 'tool_flexaccess'),
+                get_string('health_affected', 'tool_flexaccess', $multiple),
+                null,
+                $multiple
+            );
+        }
         if ($roles['systemparticipant'] > 0) {
             $items[] = self::item(
                 'invariant_systemparticipant',
@@ -239,6 +253,87 @@ final class health {
         }
         if (!$items) {
             $items[] = self::item('invariants', self::OK, get_string('health_invariantsok', 'tool_flexaccess'));
+        }
+        return $items;
+    }
+
+    /**
+     * LTI 1.3 next to FlexAccess (auth_flexaccess #12/#13): provisioning modes that create duplicate
+     * accounts, probable duplicates awaiting the reviewed merge, bindings to non-durable identities and
+     * merges whose postconditions failed.
+     *
+     * @return \stdClass[]
+     */
+    public static function check_lti(): array {
+        if (!method_exists('\auth_flexaccess\api', 'lti_auto_provisioning_resources')) {
+            return [];
+        }
+        $page = (new \moodle_url('/admin/tool/flexaccess/ltiidentities.php'))->out(false);
+        $items = [];
+        $auto = count(\auth_flexaccess\api::lti_auto_provisioning_resources(0));
+        if ($auto > 0) {
+            $items[] = self::item(
+                'lti_autoonly',
+                self::WARNING,
+                get_string('health_lti_autoonly', 'tool_flexaccess'),
+                $page,
+                null,
+                $auto
+            );
+        }
+        $duplicates = count(\auth_flexaccess\api::lti_duplicate_candidates(0));
+        if ($duplicates > 0) {
+            $items[] = self::item(
+                'lti_duplicates',
+                self::WARNING,
+                get_string('health_lti_duplicates', 'tool_flexaccess', $duplicates),
+                $page,
+                null,
+                $duplicates
+            );
+        }
+        $nondurable = count(\auth_flexaccess\api::lti_non_durable_bindings(0));
+        if (method_exists('\auth_flexaccess\api', 'lti_stale_bindings')) {
+            $nondurable += count(\auth_flexaccess\api::lti_stale_bindings(0));
+        }
+        if ($nondurable > 0) {
+            $items[] = self::item(
+                'lti_nondurable',
+                self::WARNING,
+                get_string('health_lti_nondurable', 'tool_flexaccess', $nondurable),
+                $page,
+                null,
+                $nondurable
+            );
+        }
+        if (method_exists('\enrol_flexaccess\api', 'count_invisible_lti_grades')) {
+            $invisible = \enrol_flexaccess\api::count_invisible_lti_grades();
+            if ($invisible > 0) {
+                $items[] = self::item(
+                    'lti_invisiblegrades',
+                    self::ERROR,
+                    get_string('health_lti_invisiblegrades', 'tool_flexaccess', $invisible),
+                    '',
+                    self::REPAIR_ROLES,
+                    $invisible
+                );
+            }
+        }
+        if (method_exists('\auth_flexaccess\api', 'count_merges_needing_review')) {
+            $review = \auth_flexaccess\api::count_merges_needing_review();
+            if ($review > 0) {
+                $items[] = self::item(
+                    'lti_mergereview',
+                    self::ERROR,
+                    get_string('health_lti_mergereview', 'tool_flexaccess', $review),
+                    $page,
+                    null,
+                    $review
+                );
+            }
+        }
+        if (!$items) {
+            $items[] = self::item('lti', self::OK, get_string('health_lti_ok', 'tool_flexaccess'));
         }
         return $items;
     }

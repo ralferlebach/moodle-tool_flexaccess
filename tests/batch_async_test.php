@@ -27,6 +27,14 @@ use tool_flexaccess\local\batch;
  * @covers \tool_flexaccess\local\batch
  */
 final class batch_async_test extends \advanced_testcase {
+    /**
+     * Both halves of FlexAccess are enabled on any site that provisions access lists.
+     */
+    protected function setUp(): void {
+        parent::setUp();
+        set_config('enrol_plugins_enabled', 'manual,flexaccess');
+    }
+
     public function test_small_batch_is_provisioned_synchronously(): void {
         $this->resetAfterTest();
         $this->setAdminUser();

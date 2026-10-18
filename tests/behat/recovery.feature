@@ -25,7 +25,8 @@ Feature: Frozen FlexAccess accounts are recovered through a preview and an expli
     And I press "Reactivate selected"
     Then I should see "Account becomes valid again for a limited time"
     When I press "Recover now"
-    Then I should see "Recovered"
+    Then I should see "Access restored: account and course access are effective"
+    And I should see "Account recovered"
 
   Scenario: An administrator decides the origin of legacy suspensions in a batch
     Given a frozen FlexAccess account "Legacy Visitor" exists in course "Course 1"

@@ -37,6 +37,8 @@ final class batch_test extends \advanced_testcase {
         if (!class_exists('\auth_flexaccess\api') || !class_exists('\enrol_flexaccess\local\enrol_service')) {
             $this->markTestSkipped('auth_flexaccess/enrol_flexaccess are not installed.');
         }
+        // Both halves of FlexAccess are enabled on any site that provisions access lists.
+        set_config('enrol_plugins_enabled', 'manual,flexaccess');
     }
 
     /**

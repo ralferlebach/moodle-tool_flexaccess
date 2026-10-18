@@ -585,7 +585,16 @@ final class batch {
                             $timeexpires,
                             $now
                         );
-                        \enrol_flexaccess\local\enrol_service::admin_enrol($courseid, $userid, !$permanent, $now);
+                        $enrolled = \enrol_flexaccess\local\enrol_service::admin_enrol_outcome(
+                            $courseid,
+                            $userid,
+                            !$permanent,
+                            $now
+                        );
+                        if ($enrolled->status !== \enrol_flexaccess\local\enrol_service::ENROLLED) {
+                            // A member without a usable course enrolment is no member: compensate below.
+                            throw new \moodle_exception('batchenrolfailed', 'tool_flexaccess', '', $enrolled->status);
+                        }
                         $DB->insert_record(self::MEMBER_TABLE, (object) [
                             'batchid' => $batchid,
                             'userid' => $userid,

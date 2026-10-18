@@ -158,4 +158,66 @@ final class health_test extends \advanced_testcase {
         $this->assertNotNull($item);
         $this->assertStringContainsString('Conflict course', $item->label);
     }
+
+    /**
+     * A participant role missing from the gradebook roles is reported and safely repaired (enrol #8).
+     *
+     * @return void
+     */
+    public function test_participant_not_gradeable_detected_and_repaired(): void {
+        global $CFG;
+        $roleid = \enrol_flexaccess\local\participant_role::get_id();
+        $others = array_diff(\enrol_flexaccess\local\participant_role::gradebook_roleids(), [$roleid]);
+        set_config('gradebookroles', implode(',', $others));
+        $item = $this->item(health::check_roles(), 'role_participantnotgradeable');
+        $this->assertNotNull($item);
+        $this->assertSame(health::REPAIR_ROLES, $item->repair);
+
+        $this->assertSame(1, health::repair(health::REPAIR_ROLES));
+        $this->assertNull($this->item(health::check_roles(), 'role_participantnotgradeable'));
+        $this->assertSame(
+            array_merge(array_values($others), [$roleid]),
+            \enrol_flexaccess\local\participant_role::gradebook_roleids()
+        );
+        // Idempotent: nothing left to repair.
+        $this->assertSame(0, health::repair(health::REPAIR_ROLES));
+        $this->assertStringNotContainsString(',,', $CFG->gradebookroles);
+    }
+
+    /**
+     * LTI grades that arrived for participants outside the gradebook population are reported as such
+     * ("received but invisible", not "delivery failed") and disappear with the role repair (enrol #10).
+     *
+     * @return void
+     */
+    public function test_invisible_lti_grades_detected_and_repaired(): void {
+        global $CFG, $DB;
+        require_once($CFG->libdir . '/gradelib.php');
+        set_config('enrol_plugins_enabled', 'manual,flexaccess');
+        $course = $this->getDataGenerator()->create_course();
+        enrol_get_plugin('flexaccess')->add_instance($course, ['status' => ENROL_INSTANCE_ENABLED]);
+        $userid = (int) $this->getDataGenerator()->create_user()->id;
+        $this->assertTrue(\enrol_flexaccess\local\enrol_service::admin_enrol((int) $course->id, $userid));
+        $lti = $this->getDataGenerator()->create_module('lti', ['course' => $course->id, 'grade' => 100]);
+        $item = \grade_item::fetch(['itemtype' => 'mod', 'itemmodule' => 'lti', 'iteminstance' => $lti->id]);
+        $DB->insert_record('grade_grades', (object) [
+            'itemid' => $item->id,
+            'userid' => $userid,
+            'rawgrade' => 80,
+            'finalgrade' => 80,
+        ]);
+        $this->assertNull($this->item(health::check_lti(), 'lti_invisiblegrades'));
+
+        $roleid = \enrol_flexaccess\local\participant_role::get_id();
+        $others = array_diff(\enrol_flexaccess\local\participant_role::gradebook_roleids(), [$roleid]);
+        set_config('gradebookroles', implode(',', $others));
+        $found = $this->item(health::check_lti(), 'lti_invisiblegrades');
+        $this->assertNotNull($found);
+        $this->assertSame(health::ERROR, $found->status);
+        $this->assertSame(1, $found->count);
+        $this->assertSame(health::REPAIR_ROLES, $found->repair);
+
+        health::repair(health::REPAIR_ROLES);
+        $this->assertNull($this->item(health::check_lti(), 'lti_invisiblegrades'));
+    }
 }

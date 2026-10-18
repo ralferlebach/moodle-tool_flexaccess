@@ -25,10 +25,10 @@ partial installation does not work - a missing sibling means a missing part of t
 Requirements
 ------------
 
-This plugin requires Moodle 4.5+
+This plugin requires Moodle 4.5 LTS up to Moodle 5.3 (tested on 4.5, 5.0, 5.2 and 5.3).
 
 It also requires the other FlexAccess plugins. All four are released together and must be installed
-in the same version (currently 1.1.0 / 2026092900):
+in the same version (currently 1.2.0 / 2026101700):
 
 * **auth_flexaccess (FlexAccess authentication)** - required dependency, declared in version.php\
   https://github.com/ralferlebach/moodle-auth_flexaccess
@@ -67,7 +67,8 @@ There, you find:
 
 * **Overview** - key figures, open verifications, accounts waiting for a password and system warnings.
 * **Users** - all FlexAccess accounts with account and course-access state side by side, filters for frozen accounts, batch recovery, a drill-down per user and conversion to permanent accounts.
-* **System status** - readiness across all four plugins (activation, roles, lifecycle invariants, scheduled tasks, policy conflicts, mail funnel) with previewed repairs, and **Suspension origin** to decide in batches where suspensions of unknown origin come from.
+* **System status** - readiness across all four plugins (activation, roles, lifecycle invariants, scheduled tasks, policy conflicts, mail funnel, LTI identities) with previewed repairs, and **Suspension origin** to decide in batches where suspensions of unknown origin come from.
+* **LTI identities** - automatically provisioned LTI accounts that may duplicate a FlexAccess account, links to temporary or deleted accounts, and identity merges waiting for review, with approval, re-check, re-pointing and link removal.
 * **Mail queue** - what is queued, sent or failed, with a manual run.
 * **Policies** - the site and category level of the FlexAccess access policy.
 * **Invitations** - person-bound, single-use invitations including reminders and revocation.
@@ -124,6 +125,8 @@ An anonymous access list creates a set of generated accounts for one course. Sma
 Passwords are never stored in clear. Issuing the credentials therefore rotates every password and produces one package - spreadsheet, printable list and login cards - from a single set. Because a second issue would invalidate the copies already handed out, the download is offered once; only a site administrator can issue again, and is warned about the consequence.
 
 The login cards are laid out so the sheet can be cut: the gap between two cards is twice the page margin, so halving the sheet and halving again leaves every card with the same border. A free text supplied when the list is requested is printed on each card.
+
+Recovery reports what it actually achieved. A recovery only reports "access restored" when the account can sign in and the course enrolment is effective (plugin and method enabled, enrolment active and within its dates, participant role present); otherwise it names the blocker - for example a disabled enrolment method - and links to where it can be fixed. The preview shows the same facts before anything is changed.
 
 **Pitfall:** invitations and campaign links are bearer secrets. Only their hash is stored, so a lost link cannot be recovered - it can only be replaced, which invalidates the old one.
 

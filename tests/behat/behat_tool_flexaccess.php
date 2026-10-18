@@ -42,6 +42,11 @@ class behat_tool_flexaccess extends behat_base {
             explode(',', (string) get_config('core', 'enrol_plugins_enabled')),
             ['flexaccess']
         ))));
+        // Both halves of FlexAccess enabled, as on a real site (a disabled auth plugin signs nobody in).
+        set_config('auth', implode(',', array_filter(array_unique(array_merge(
+            explode(',', (string) get_config('core', 'auth')),
+            ['flexaccess']
+        )))));
         $enrolid = \enrol_flexaccess\local\enrol_service::ensure_instance($courseid);
         $userid = (int) \enrol_flexaccess\local\enrol_service::reserve_and_enrol(
             $enrolid,

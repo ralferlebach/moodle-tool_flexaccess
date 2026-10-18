@@ -30,6 +30,14 @@ use tool_flexaccess\local\batch;
  * @covers \tool_flexaccess\local\batch
  */
 final class batch_failure_test extends \advanced_testcase {
+    /**
+     * Both halves of FlexAccess are enabled on any site that provisions access lists.
+     */
+    protected function setUp(): void {
+        parent::setUp();
+        set_config('enrol_plugins_enabled', 'manual,flexaccess');
+    }
+
     public function test_failure_after_several_members_lands_in_failed_with_reason(): void {
         global $DB;
         $this->resetAfterTest();

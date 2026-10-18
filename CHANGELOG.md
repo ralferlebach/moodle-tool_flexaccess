@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 (2026101700) — 2026-10-17 — Recovery nur bei erreichtem Ziel, LTI-Identitäten, Moodle 5.3
+- **Recovery meldet, was tatsächlich erreicht wurde (#10, RECOVERY).**
+  - **Bisher:** Scheiterte die Kontowiederherstellung (z. B. fremde Sperre), wurde die Einschreibung trotzdem reaktiviert, und die Seite zeigte „nicht berechtigt“ und „Einschreibung reaktiviert“ nebeneinander. Eine Reaktivierung auf einer deaktivierten Methode oder ohne Rolle galt als Erfolg.
+  - **Jetzt:** Nach jeder Aktion werden Konto und wirksamer Kurszugang neu gelesen; „Zugang wiederhergestellt“ erscheint nur bei erfüllter Nachbedingung. Ein Gesamtstatus pro Nutzer (`effective_access_restored`/`effective_access_not_restored`) mit auditierbaren Teilaktionen (`account_*`, `enrolment_*`). Die Vorschau zeigt Kontozustand, Sperre und Herkunft, Einschreibestatus, Zeitfenster, Methode, Rolle und den erwarteten Zustand; nicht automatisch behebbare Ursachen verlinken auf die richtige Stelle. Eine deaktivierte Methode wird nie implizit aktiviert.
+- **Seite „LTI-Identitäten“ und Systemstatus (zu auth #12/#13, enrol #10).** Ressourcen mit AUTO_ONLY, wahrscheinliche Dubletten, Bindungen an temporäre oder gelöschte Konten, unsichtbare LTI-Noten und Merges zur Prüfung – mit Freigabe, erneuter Prüfung, Umhängen und Entfernen einer Bindung (Sesskey, `moodle/user:update`, Ereignis `identity_merge_action`).
+- **Zugangslisten:** Ein Mitglied wird nur bei tatsächlich wirksamer Einschreibung geschrieben; Fehlschläge brechen mit `batchenrolfailed` ab.
+- **Moodle 5.3 (#11, COMPAT).** CI-Matrix um Moodle 5.3 × PHP 8.3/8.4 × PostgreSQL 17/MariaDB 11.4 (eigene Ports, ältere Zellen unverändert); Playwright-Workflows laufen auf 4.5 und 5.3 (public/-Layout); neuer Navigations-Smoke-Test (Kurs → Mehr → FlexAccess, Tabs per Tastatur, Überschriften, Kontrast hell; auf 5.3 zusätzlich dunkel mit aktivierten Farbmodi von theme_boost – geprüft, dass `data-bs-theme` tatsächlich gesetzt ist).
+- Version `2026101700`, Release `1.2.0`, `MATURITY_STABLE`, `supported` [405, 503]. Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026101700`.
+
 ## 1.1.0 (2026092900) — 2026-09-29 — Hinweis bei gesperrten Nutzern in der Konvertierung
 - Konvertierung: Neuer Hinweis `convertstatusforeignlock`, wenn der Moodle-Nutzer außerhalb von FlexAccess gesperrt ist; es wird dann nichts konvertiert (REST-001).
 - Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026092900`. Version `2026092900`, Release `1.1.0`, `MATURITY_STABLE`.

@@ -28,6 +28,14 @@ use tool_flexaccess\local\batch;
  * @covers \tool_flexaccess\local\batch
  */
 final class batch_credential_lifecycle_test extends \advanced_testcase {
+    /**
+     * Both halves of FlexAccess are enabled on any site that provisions access lists.
+     */
+    protected function setUp(): void {
+        parent::setUp();
+        set_config('enrol_plugins_enabled', 'manual,flexaccess');
+    }
+
     public function test_reissue_skips_converted_member_and_keeps_their_password(): void {
         global $DB;
         $this->resetAfterTest();

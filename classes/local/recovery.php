@@ -33,20 +33,75 @@ use auth_flexaccess\local\account_type;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 final class recovery {
-    /** Outcome: the account was recovered. */
-    public const RECOVERED = 'recovered';
-    /** Outcome: nothing to do for the account. */
-    public const SKIPPED = 'skipped';
-    /** Outcome: the account may not be recovered (by rule or out of scope). */
+    /** Overall: account and course access are effective again (postcondition met). */
+    public const EFFECTIVE_ACCESS_RESTORED = 'effective_access_restored';
+    /** Overall: the recovery ran, but account or course access is still not effective. */
+    public const EFFECTIVE_ACCESS_NOT_RESTORED = 'effective_access_not_restored';
+    /** Overall: the recovery was refused before anything changed (rule, scope or confirmation). */
     public const NOT_ELIGIBLE = 'noteligible';
-    /** Outcome: a suspended enrolment was reactivated. */
-    public const ENROLMENT_REACTIVATED = 'enrolmentreactivated';
-    /** Outcome: an enrolment was removed earlier; re-enrolment needs its own confirmed action. */
-    public const REENROL_REQUIRED = 'reenrolrequired';
-    /** Outcome: the user was re-enrolled after confirmation. */
-    public const REENROLLED = 'reenrolled';
-    /** Outcome: the whole recovery of this user failed and was rolled back. */
+    /** Overall: the whole recovery of this user failed and was rolled back. */
     public const FAILED = 'failed';
+
+    /** Action: the account was recovered. */
+    public const ACCOUNT_RECOVERED = 'account_recovered';
+    /** Action: the account needed no change. */
+    public const ACCOUNT_UNCHANGED = 'account_unchanged';
+    /** Action: the account is suspended outside FlexAccess; nothing was changed. */
+    public const ACCOUNT_BLOCKED_FOREIGN_LOCK = 'account_blocked_foreign_lock';
+    /** Action: the account may not be recovered by rule (e.g. suspended by an administrator). */
+    public const ACCOUNT_NOT_ELIGIBLE = 'account_not_eligible';
+    /** Action: a suspended or expired enrolment was reactivated. */
+    public const ENROLMENT_REACTIVATED = 'enrolment_reactivated';
+    /** Action: the selected enrolment was already active. */
+    public const ENROLMENT_ALREADY_ACTIVE = 'enrolment_already_active';
+    /** Action: the missing FlexAccess participant role was put back into the course. */
+    public const ENROLMENT_ROLE_REPAIRED = 'enrolment_role_repaired';
+    /** Action: refused, the FlexAccess enrolment instance of the course is disabled. */
+    public const ENROLMENT_BLOCKED_INSTANCE_DISABLED = 'enrolment_blocked_instance_disabled';
+    /** Action: refused, the FlexAccess enrolment plugin is disabled site-wide. */
+    public const ENROLMENT_BLOCKED_PLUGIN_DISABLED = 'enrolment_blocked_plugin_disabled';
+    /** Action: refused, the FlexAccess participant role does not exist. */
+    public const ENROLMENT_BLOCKED_MISSING_ROLE = 'enrolment_blocked_missing_role';
+    /** Action: refused, the course has several FlexAccess enrolment instances. */
+    public const ENROLMENT_BLOCKED_MULTIPLE_INSTANCES = 'enrolment_blocked_multiple_instances';
+    /** Action/state: the enrolment is active but starts in the future. */
+    public const ENROLMENT_NOT_STARTED = 'enrolment_not_started';
+    /** Action: the user was re-enrolled after confirmation. */
+    public const ENROLMENT_REENROLLED = 'enrolment_reenrolled';
+    /** Action: an enrolment was removed earlier; re-enrolment needs its own confirmed action. */
+    public const ENROLMENT_REENROL_REQUIRED = 'enrolment_reenrol_required';
+    /** Action: enrolment changes were skipped because the account itself is blocked. */
+    public const ENROLMENT_SKIPPED_ACCOUNT_BLOCKED = 'enrolment_skipped_account_blocked';
+
+    /** @deprecated since 2026101700 - use {@see self::ACCOUNT_RECOVERED}. */
+    public const RECOVERED = self::ACCOUNT_RECOVERED;
+    /** @deprecated since 2026101700 - use {@see self::ACCOUNT_UNCHANGED}. */
+    public const SKIPPED = self::ACCOUNT_UNCHANGED;
+    /** @deprecated since 2026101700 - use {@see self::ENROLMENT_REENROL_REQUIRED}. */
+    public const REENROL_REQUIRED = self::ENROLMENT_REENROL_REQUIRED;
+    /** @deprecated since 2026101700 - use {@see self::ENROLMENT_REENROLLED}. */
+    public const REENROLLED = self::ENROLMENT_REENROLLED;
+
+    /** Effective-state problems with which Core does not let the user into the course at all. */
+    private const CORE_INACTIVE = [
+        'plugin_disabled',
+        'user_enrolment_missing',
+        'instance_disabled',
+        'user_enrolment_suspended',
+        'not_started',
+        'expired',
+    ];
+
+    /** Enrolment outcomes of enrol_flexaccess mapped onto recovery actions. */
+    private const ENROL_OUTCOMES = [
+        'reactivated' => self::ENROLMENT_REACTIVATED,
+        'alreadyactive' => self::ENROLMENT_ALREADY_ACTIVE,
+        'instancedisabled' => self::ENROLMENT_BLOCKED_INSTANCE_DISABLED,
+        'plugindisabled' => self::ENROLMENT_BLOCKED_PLUGIN_DISABLED,
+        'rolemissing' => self::ENROLMENT_BLOCKED_MISSING_ROLE,
+        'multipleinstances' => self::ENROLMENT_BLOCKED_MULTIPLE_INSTANCES,
+        'enrolled' => self::ENROLMENT_REENROLLED,
+    ];
 
     /**
      * Joint account + enrolment snapshot of one user, optionally scoped to a course.
@@ -198,19 +253,37 @@ final class recovery {
     }
 
     /**
-     * Recover one user atomically.
+     * Recover one user atomically and verify the result against Core semantics.
+     *
+     * The account is recovered first. If it stays blocked (a suspension FlexAccess did not set, an
+     * administrative suspension), no enrolment is touched: access could not be restored anyway, and a
+     * partial result must not look like success. Otherwise the explicitly selected enrolments are
+     * reactivated or re-enrolled. Afterwards account and enrolment state are read again, and the overall
+     * result is "effective access restored" only when the account is usable through its channel and every
+     * targeted FlexAccess enrolment is effective in Core (plugin and instance enabled, enrolment active and
+     * inside its time window, participant role present).
      *
      * @param int $userid User id.
      * @param int|null $courseid Course scope, or null for the system scope.
      * @param array $options ['reactivate' => int[] ueids, 'reenrol' => int[] courseids,
      *     'confirmcrosscourse' => bool: the cross-course impact was explicitly confirmed].
      * @param int|null $now Current time.
-     * @return \stdClass ->userid, ->outcomes (string[]), ->reason (for failed/noteligible), ->action.
+     * @return \stdClass ->userid, ->overall (one of EFFECTIVE_ACCESS_RESTORED, EFFECTIVE_ACCESS_NOT_RESTORED,
+     *     NOT_ELIGIBLE, FAILED), ->outcomes (string[] technical actions), ->reason (refusal or failure),
+     *     ->action (account action), ->postcondition (see {@see self::postcondition()}), ->blockers.
      */
     public static function recover(int $userid, ?int $courseid, array $options = [], ?int $now = null): \stdClass {
         global $DB;
         $now = $now ?? time();
-        $result = (object) ['userid' => $userid, 'outcomes' => [], 'reason' => '', 'action' => ''];
+        $result = (object) [
+            'userid' => $userid,
+            'overall' => self::NOT_ELIGIBLE,
+            'outcomes' => [],
+            'reason' => '',
+            'action' => '',
+            'postcondition' => null,
+            'blockers' => [],
+        ];
         $snapshot = self::snapshot($userid, $courseid, $now);
         if ($snapshot === null) {
             $result->outcomes[] = self::NOT_ELIGIBLE;
@@ -243,24 +316,39 @@ final class recovery {
 
         $changes = [];
         $reenrolled = [];
+        $targets = [];
         $transaction = $DB->start_delegated_transaction();
         try {
             $account = \auth_flexaccess\api::recover_account($userid, null, $now);
-            $result->outcomes[] = $account->outcome;
             $result->action = $account->action;
-            if ($account->outcome === self::NOT_ELIGIBLE) {
+            $blocked = $account->outcome === 'noteligible';
+            if ($blocked) {
                 $result->reason = $account->action;
+                $result->outcomes[] = $account->action === 'foreignlock'
+                    ? self::ACCOUNT_BLOCKED_FOREIGN_LOCK : self::ACCOUNT_NOT_ELIGIBLE;
+            } else {
+                $result->outcomes[] = $account->outcome === 'recovered' ? self::ACCOUNT_RECOVERED : self::ACCOUNT_UNCHANGED;
             }
 
-            // Enrolments: only those explicitly selected, only within the scope.
+            // Enrolments: only those explicitly selected, only within the scope, and only while the
+            // account itself can be used again - otherwise nothing would really be restored.
             foreach ($snapshot->enrolments as $enrolment) {
                 if (!in_array($enrolment->ueid, $reactivate, true)) {
                     continue;
                 }
+                $targets[] = $enrolment->courseid;
+                if ($blocked) {
+                    $result->outcomes[] = self::ENROLMENT_SKIPPED_ACCOUNT_BLOCKED;
+                    continue;
+                }
                 $change = \enrol_flexaccess\api::reactivate_enrolment($enrolment->ueid, $courseid, $now);
-                if ($change !== null) {
-                    $changes[] = $change;
-                    $result->outcomes[] = self::ENROLMENT_REACTIVATED;
+                if ($change->outcome === 'notfound') {
+                    continue;
+                }
+                $changes[] = $change;
+                $result->outcomes[] = self::ENROL_OUTCOMES[$change->outcome] ?? self::FAILED;
+                if (!empty($change->rolerepaired)) {
+                    $result->outcomes[] = self::ENROLMENT_ROLE_REPAIRED;
                 }
             }
 
@@ -270,14 +358,20 @@ final class recovery {
                     continue;
                 }
                 $allowed = has_capability('tool/flexaccess:reenrol', \context_course::instance($unenrolled));
-                if (in_array($unenrolled, $reenrol, true) && $allowed) {
-                    $restrict = $snapshot->accounttype === account_type::TEMPORARY_USER;
-                    if (\enrol_flexaccess\api::reenrol_user($unenrolled, $userid, $restrict, $now)) {
-                        $reenrolled[] = $unenrolled;
-                        $result->outcomes[] = self::REENROLLED;
-                    }
-                } else {
-                    $result->outcomes[] = self::REENROL_REQUIRED;
+                if (!in_array($unenrolled, $reenrol, true) || !$allowed) {
+                    $result->outcomes[] = self::ENROLMENT_REENROL_REQUIRED;
+                    continue;
+                }
+                $targets[] = $unenrolled;
+                if ($blocked) {
+                    $result->outcomes[] = self::ENROLMENT_SKIPPED_ACCOUNT_BLOCKED;
+                    continue;
+                }
+                $restrict = $snapshot->accounttype === account_type::TEMPORARY_USER;
+                $enrolled = \enrol_flexaccess\api::reenrol_user_outcome($unenrolled, $userid, $restrict, $now);
+                $result->outcomes[] = self::ENROL_OUTCOMES[$enrolled->status] ?? self::FAILED;
+                if ($enrolled->status === 'enrolled') {
+                    $reenrolled[] = $unenrolled;
                 }
             }
             $transaction->allow_commit();
@@ -286,11 +380,26 @@ final class recovery {
                 $transaction->rollback($e);
             } catch (\Throwable $rolledback) {
                 // The rollback rethrows; the user is reported as failed with the original reason.
+                $result->overall = self::FAILED;
                 $result->outcomes = [self::FAILED];
                 $result->reason = $e->getMessage();
                 return $result;
             }
         }
+
+        // Postcondition: read everything again and judge the result as Core and the login guard see it.
+        if ($courseid !== null && ($snapshot->enrolments || in_array($courseid, $reenrolled, true))) {
+            $targets[] = $courseid;
+        }
+        $result->postcondition = self::postcondition($userid, array_values(array_unique($targets)), $now);
+        $result->blockers = $result->postcondition->blockers;
+        $result->overall = $result->postcondition->met ? self::EFFECTIVE_ACCESS_RESTORED : self::EFFECTIVE_ACCESS_NOT_RESTORED;
+        foreach ($result->postcondition->courses as $state) {
+            if ($state === 'not_started') {
+                $result->outcomes[] = self::ENROLMENT_NOT_STARTED;
+            }
+        }
+        $result->outcomes = array_values(array_unique($result->outcomes));
 
         $after = self::snapshot($userid, $courseid, $now);
         \tool_flexaccess\event\account_recovered::create([
@@ -305,16 +414,120 @@ final class recovery {
                 'enrolments' => array_map(static fn(\stdClass $c): array => [
                     'ueid' => $c->ueid,
                     'courseid' => $c->courseid,
+                    'outcome' => $c->outcome,
                     'oldstatus' => $c->oldstatus,
                     'newstatus' => $c->newstatus,
                     'newtimeend' => $c->newtimeend,
+                    'rolerepaired' => !empty($c->rolerepaired),
                 ], $changes),
                 'reenrolled' => $reenrolled,
-                'outcomes' => array_values(array_unique($result->outcomes)),
+                'outcomes' => $result->outcomes,
+                'overall' => $result->overall,
+                'postcondition' => [
+                    'account' => $result->postcondition->account->reason,
+                    'courses' => $result->postcondition->courses,
+                ],
             ],
         ])->trigger();
-        $result->outcomes = array_values(array_unique($result->outcomes));
         return $result;
+    }
+
+    /**
+     * The verifiable postcondition of a recovery: is access effective now, as Core and the login guard see it?
+     *
+     * @param int $userid User id.
+     * @param int[] $courseids Courses whose FlexAccess enrolment was targeted. When empty, the user's
+     *     FlexAccess enrolments are considered and at least one must be effective (if there are any).
+     * @param int|null $now Current time.
+     * @return \stdClass ->met (bool), ->account (auth_flexaccess account_access result), ->courses
+     *     (courseid => effective state), ->blockers (\stdClass[] scope 'account'|'course', courseid, code).
+     */
+    public static function postcondition(int $userid, array $courseids, ?int $now = null): \stdClass {
+        $now = $now ?? time();
+        $account = \auth_flexaccess\api::account_access($userid, $now);
+        $blockers = [];
+        if (!$account->usable) {
+            $blockers[] = (object) ['scope' => 'account', 'courseid' => 0, 'code' => $account->reason];
+        }
+        $courses = [];
+        $any = $courseids === [];
+        if ($any) {
+            foreach (\enrol_flexaccess\api::get_enrolments_for_users([$userid], $now)[$userid] ?? [] as $enrolment) {
+                $courses[$enrolment->courseid] = $enrolment->effective;
+            }
+        } else {
+            foreach ($courseids as $courseid) {
+                $courses[(int) $courseid] = \enrol_flexaccess\api::effective_enrolment_state($userid, (int) $courseid, $now)->state;
+            }
+        }
+        $ok = array_filter($courses, static fn(string $state): bool => $state === 'ok');
+        if ($any) {
+            $coursesmet = !$courses || $ok;
+        } else {
+            $coursesmet = count($ok) === count($courses);
+        }
+        if (!$coursesmet) {
+            foreach ($courses as $courseid => $state) {
+                if ($state !== 'ok') {
+                    $blockers[] = (object) ['scope' => 'course', 'courseid' => (int) $courseid, 'code' => $state];
+                }
+            }
+        }
+        return (object) [
+            'met' => $account->usable && $coursesmet,
+            'account' => $account,
+            'courses' => $courses,
+            'blockers' => $blockers,
+        ];
+    }
+
+    /**
+     * Expected effective state of one enrolment after the recovery, for the preview (nothing is changed).
+     *
+     * @param \stdClass $snapshot Snapshot.
+     * @param \stdClass $enrolment One enrolment of the snapshot.
+     * @param bool $selected Whether the enrolment is selected for reactivation.
+     * @return string 'ok' or an effective-state code that will remain.
+     */
+    public static function predict_enrolment(\stdClass $snapshot, \stdClass $enrolment, bool $selected): string {
+        $action = self::predict_account_action($snapshot);
+        if (in_array($action, ['foreignlock', 'noteligible'], true)) {
+            return $enrolment->effective;
+        }
+        if (!$selected) {
+            return $enrolment->effective;
+        }
+        // Reactivation fixes a suspension, a passed end and a missing course role - nothing else.
+        $fixable = ['user_enrolment_suspended', 'expired', 'participant_role_missing'];
+        foreach ($enrolment->problems as $problem) {
+            if (!in_array($problem, $fixable, true)) {
+                return $problem;
+            }
+        }
+        return 'ok';
+    }
+
+    /**
+     * Where an administrator resolves a blocker that recovery must not resolve on its own.
+     *
+     * @param \stdClass $blocker Blocker (scope, courseid, code).
+     * @param int $userid User the blocker belongs to.
+     * @return \moodle_url|null
+     */
+    public static function blocker_url(\stdClass $blocker, int $userid): ?\moodle_url {
+        if ($blocker->scope === 'account') {
+            if (in_array($blocker->code, ['suspended', 'statemismatch'], true)) {
+                return new \moodle_url('/admin/tool/flexaccess/lockreview.php');
+            }
+            return new \moodle_url('/admin/tool/flexaccess/user.php', ['userid' => $userid]);
+        }
+        if (in_array($blocker->code, ['instance_disabled', 'multiple_instances', 'user_enrolment_missing'], true)) {
+            return new \moodle_url('/enrol/instances.php', ['id' => $blocker->courseid]);
+        }
+        if (in_array($blocker->code, ['plugin_disabled', 'participant_role_missing'], true)) {
+            return new \moodle_url('/admin/tool/flexaccess/status.php');
+        }
+        return null;
     }
 
     /**
@@ -351,9 +564,12 @@ final class recovery {
             } catch (\Throwable $e) {
                 $results[$userid] = (object) [
                     'userid' => $userid,
+                    'overall' => self::FAILED,
                     'outcomes' => [self::FAILED],
                     'reason' => $e->getMessage(),
                     'action' => '',
+                    'postcondition' => null,
+                    'blockers' => [],
                 ];
             }
         }
@@ -361,18 +577,21 @@ final class recovery {
     }
 
     /**
-     * Combine account and enrolment state into one of the diagnosis labels.
+     * Diagnosis label of account plus one enrolment, from the central effective states.
+     *
+     * The course side comes from enrol_flexaccess' effective state (Core semantics: plugin, instance,
+     * enrolment, time window, participant role); nothing is recombined from individual fields here.
      *
      * @param \stdClass $snapshot Snapshot.
      * @param \stdClass|null $enrolment One enrolment of the snapshot, or null.
-     * @return string accountexpired, enrolexpired, bothexpired, activeenrolsuspended,
-     *     lockedenrolactive, pendingcredential, ok.
+     * @return string accountexpired, enrolexpired, bothexpired, activeenrolsuspended, lockedenrolactive,
+     *     pendingcredential, instancedisabled, plugindisabled, rolemissing, notstarted, multipleinstances, ok.
      */
     public static function access_status(\stdClass $snapshot, ?\stdClass $enrolment): string {
         $accountexpired = $snapshot->accountlapsed;
         $locked = !$accountexpired && ((int) $snapshot->suspended === 1 || $snapshot->accountstate === account_state::SUSPENDED);
-        $enrolexpired = $enrolment !== null && $enrolment->expired;
-        $enrolsuspended = $enrolment !== null && $enrolment->status !== ENROL_USER_ACTIVE;
+        $effective = $enrolment !== null ? $enrolment->effective : null;
+        $enrolexpired = $effective === 'expired';
         if ($accountexpired && $enrolexpired) {
             return 'bothexpired';
         }
@@ -382,14 +601,22 @@ final class recovery {
         if ($enrolexpired) {
             return 'enrolexpired';
         }
-        if ($locked && $enrolment !== null && !$enrolsuspended) {
+        if ($locked && $effective === 'ok') {
             return 'lockedenrolactive';
         }
         if ($snapshot->accountstate === account_state::PENDING_CREDENTIAL) {
             return 'pendingcredential';
         }
-        if ($enrolsuspended) {
-            return 'activeenrolsuspended';
+        $labels = [
+            'user_enrolment_suspended' => 'activeenrolsuspended',
+            'instance_disabled' => 'instancedisabled',
+            'plugin_disabled' => 'plugindisabled',
+            'participant_role_missing' => 'rolemissing',
+            'not_started' => 'notstarted',
+            'multiple_instances' => 'multipleinstances',
+        ];
+        if ($effective !== null && isset($labels[$effective])) {
+            return $labels[$effective];
         }
         return 'ok';
     }
@@ -410,10 +637,16 @@ final class recovery {
         $othercourses = [];
         foreach ($all as $enrolment) {
             if ($courseid === null || $enrolment->courseid === $courseid) {
-                $enrolment->reactivatable = $enrolment->status !== ENROL_USER_ACTIVE || $enrolment->expired;
+                // Selectable whenever a reactivation can fix something (suspension, passed end, lost
+                // course role); blockers that need an administrator are shown, not offered.
+                $enrolment->reactivatable = array_intersect(
+                    $enrolment->problems,
+                    ['user_enrolment_suspended', 'expired', 'participant_role_missing']
+                ) && !array_intersect($enrolment->problems, ['plugin_disabled', 'instance_disabled', 'multiple_instances']);
                 $enrolments[] = $enrolment;
-            } else if ($enrolment->status === ENROL_USER_ACTIVE && !$enrolment->expired) {
-                // Effective elsewhere: an account recovery started in this course restores it too.
+            } else if (!array_intersect($enrolment->problems, self::CORE_INACTIVE)) {
+                // Active in Core elsewhere (with or without its role, the course opens): an account
+                // recovery started in this course restores that access too.
                 $othercourses[] = $enrolment->courseid;
             }
         }
@@ -437,6 +670,7 @@ final class recovery {
             'timeexpires' => (int) ($account->timeexpires ?? 0),
             'accountlapsed' => $lapsed,
             'suspended' => $suspended,
+            'lockedby' => $account->lockedby ?? null,
             'verificationpending' => isset($facts->verification[$userid]),
             'credentialstatus' => $facts->credential[$userid] ?? 'none',
             'mismatches' => $facts->mismatches[$userid] ?? [],

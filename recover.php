@@ -82,6 +82,30 @@ function tool_flexaccess_recover_pairs(string $name): array {
     return $pairs;
 }
 
+/**
+ * Render one blocker of the recovery postcondition, with the place where an administrator resolves it.
+ *
+ * @param stdClass $blocker Blocker (scope 'account'|'course', courseid, code).
+ * @param int $userid User the blocker belongs to.
+ * @return string HTML.
+ */
+function tool_flexaccess_recover_blocker(stdClass $blocker, int $userid): string {
+    if ($blocker->scope === 'account') {
+        $key = 'recoverblocker_account_' . $blocker->code;
+        $text = get_string_manager()->string_exists($key, 'tool_flexaccess')
+            ? get_string($key, 'tool_flexaccess')
+            : get_string('recoverblocker_account', 'tool_flexaccess', s($blocker->code));
+    } else {
+        $text = \tool_flexaccess\local\user_presenter::course_name($blocker->courseid) . ': '
+            . get_string('effectivestate_' . $blocker->code, 'tool_flexaccess');
+    }
+    $url = recovery::blocker_url($blocker, $userid);
+    if ($url) {
+        $text .= ' ' . html_writer::link($url, get_string('recoverblockerresolve', 'tool_flexaccess'));
+    }
+    return $text;
+}
+
 $tabs = $scope !== null ? navigation::render_course($courseid, navigation::USERS) : navigation::render_system(navigation::USERS);
 
 if ($confirm && confirm_sesskey()) {
@@ -95,11 +119,22 @@ if ($confirm && confirm_sesskey()) {
     echo $tabs;
     $snapshots = recovery::snapshots(array_keys($results), $scope);
     $table = new html_table();
-    $table->head = [get_string('accountname', 'tool_flexaccess'), get_string('recoveroutcome', 'tool_flexaccess')];
+    $table->head = [
+        get_string('accountname', 'tool_flexaccess'),
+        get_string('recoveroverall', 'tool_flexaccess'),
+        get_string('recoveroutcome', 'tool_flexaccess'),
+        get_string('recoverblockers', 'tool_flexaccess'),
+    ];
     foreach ($results as $id => $result) {
+        // One unambiguous overall status per user; the technical actions are listed beside it.
+        $restored = $result->overall === recovery::EFFECTIVE_ACCESS_RESTORED;
+        $overall = html_writer::span(
+            get_string('recoveroutcome_' . $result->overall, 'tool_flexaccess'),
+            'badge ' . ($restored ? 'badge-success bg-success' : 'badge-warning bg-warning text-dark')
+        );
         $labels = array_map(
             static fn(string $o): string => get_string('recoveroutcome_' . $o, 'tool_flexaccess'),
-            $result->outcomes
+            array_diff($result->outcomes, [$result->overall])
         );
         if ($result->reason !== '') {
             $key = 'recoverreason_' . $result->reason;
@@ -107,8 +142,17 @@ if ($confirm && confirm_sesskey()) {
                 ? get_string($key, 'tool_flexaccess')
                 : get_string('recoverreason', 'tool_flexaccess', s($result->reason));
         }
+        $blockers = [];
+        foreach ($result->blockers as $blocker) {
+            $blockers[] = tool_flexaccess_recover_blocker($blocker, (int) $id);
+        }
         $name = isset($snapshots[$id]) ? s($snapshots[$id]->fullname) : (string) $id;
-        $table->data[] = [$name, implode(html_writer::empty_tag('br'), $labels)];
+        $table->data[] = [
+            $name,
+            $overall,
+            implode(html_writer::empty_tag('br'), $labels),
+            $blockers ? implode(html_writer::empty_tag('br'), $blockers) : '-',
+        ];
     }
     echo html_writer::table($table);
     echo $OUTPUT->continue_button($backurl);
@@ -139,6 +183,7 @@ $table->head = [
     get_string('recoverplannedaccount', 'tool_flexaccess'),
     get_string('recoverplannedenrolments', 'tool_flexaccess'),
 ];
+$br = html_writer::empty_tag('br');
 foreach ($userids as $id) {
     if (!isset($snapshots[$id])) {
         continue;
@@ -147,21 +192,58 @@ foreach ($userids as $id) {
     echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'userids[]', 'value' => $id]);
     $eligible = recovery::can_recover($snapshot, $scope);
     $action = $eligible ? recovery::predict_account_action($snapshot) : 'outofscope';
+
+    // Account facts as Core sees them: lifecycle state, Moodle suspension and who set it.
+    $statecell = \tool_flexaccess\local\account_labels::state($snapshot->accountstate);
+    $provenance = (int) $snapshot->suspended === 1
+        ? get_string('recoverlockedby_' . ($snapshot->lockedby ?? 'unknown'), 'tool_flexaccess')
+        : get_string('no');
+    $statecell .= html_writer::div(get_string('recoversuspended', 'tool_flexaccess', $provenance), 'small');
+
     $enrolcell = [];
     foreach ($snapshot->enrolments as $enrolment) {
-        $label = \tool_flexaccess\local\user_presenter::course_name($enrolment->courseid) . ': ' . get_string(
-            $enrolment->status === ENROL_USER_ACTIVE ? 'enrolactive' : 'enrolsuspended',
-            'tool_flexaccess'
-        ) . ($enrolment->timeend > 0 ? ' (' . userdate($enrolment->timeend) . ')' : '');
+        $facts = [
+            get_string($enrolment->status === ENROL_USER_ACTIVE ? 'enrolactive' : 'enrolsuspended', 'tool_flexaccess'),
+            get_string(
+                'recoverwindow',
+                'tool_flexaccess',
+                (object) [
+                    'start' => $enrolment->timestart > 0 ? userdate($enrolment->timestart) : '-',
+                    'end' => $enrolment->timeend > 0 ? userdate($enrolment->timeend) : get_string('never'),
+                ]
+            ),
+            get_string($enrolment->instanceenabled ? 'recoverinstanceenabled' : 'recoverinstancedisabled', 'tool_flexaccess'),
+            get_string($enrolment->hasrole ? 'recoverrolepresent' : 'recoverrolemissing', 'tool_flexaccess'),
+        ];
+        $label = \tool_flexaccess\local\user_presenter::course_name($enrolment->courseid) . ': ' . implode(' · ', $facts);
+        $expectedwith = recovery::predict_enrolment($snapshot, $enrolment, true);
+        $expectedwithout = recovery::predict_enrolment($snapshot, $enrolment, false);
+        $expected = html_writer::div(get_string(
+            'recoverexpected',
+            'tool_flexaccess',
+            $expectedwith === $expectedwithout
+                ? get_string('effectivestate_' . $expectedwith, 'tool_flexaccess')
+                : get_string('recoverexpectedselected', 'tool_flexaccess', (object) [
+                    'selected' => get_string('effectivestate_' . $expectedwith, 'tool_flexaccess'),
+                    'unselected' => get_string('effectivestate_' . $expectedwithout, 'tool_flexaccess'),
+                ])
+        ), 'small text-muted');
         if ($eligible && $enrolment->reactivatable) {
             $enrolcell[] = html_writer::checkbox(
                 'reactivate[]',
                 $id . ':' . $enrolment->ueid,
                 false,
                 get_string('recoverreactivate', 'tool_flexaccess', $label)
-            );
+            ) . $expected;
         } else {
-            $enrolcell[] = s($label);
+            $enrolcell[] = s($label) . $expected;
+        }
+        foreach ($enrolment->problems as $problem) {
+            // Causes recovery may not resolve itself are pointed at the place an administrator resolves them.
+            $blocker = (object) ['scope' => 'course', 'courseid' => $enrolment->courseid, 'code' => $problem];
+            if (in_array($problem, ['instance_disabled', 'multiple_instances', 'plugin_disabled'], true)) {
+                $enrolcell[] = html_writer::div(tool_flexaccess_recover_blocker($blocker, $id), 'alert alert-warning p-1 my-1');
+            }
         }
     }
     foreach ($snapshot->unenrolledcourses as $unenrolled) {
@@ -178,6 +260,12 @@ foreach ($userids as $id) {
         }
     }
     $accountcell = get_string('recoveraction_' . $action, 'tool_flexaccess');
+    if ($action === 'foreignlock') {
+        $accountcell .= html_writer::div(tool_flexaccess_recover_blocker(
+            (object) ['scope' => 'account', 'courseid' => 0, 'code' => 'suspended'],
+            $id
+        ), 'alert alert-warning p-1 my-1');
+    }
     $impact = $eligible ? recovery::cross_course_impact($snapshot, $scope) : [];
     if ($impact) {
         // The account is global: recovering it here also restores access in these other courses.
@@ -198,9 +286,9 @@ foreach ($userids as $id) {
     }
     $table->data[] = [
         s($snapshot->fullname),
-        \tool_flexaccess\local\account_labels::state($snapshot->accountstate),
+        $statecell,
         $accountcell,
-        $enrolcell ? implode(html_writer::empty_tag('br'), $enrolcell) : '-',
+        $enrolcell ? implode($br, $enrolcell) : '-',
     ];
 }
 echo html_writer::table($table);

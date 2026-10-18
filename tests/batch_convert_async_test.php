@@ -29,6 +29,14 @@ use tool_flexaccess\local\batch_import;
  */
 final class batch_convert_async_test extends \advanced_testcase {
     /**
+     * Both halves of FlexAccess are enabled on any site that provisions access lists.
+     */
+    protected function setUp(): void {
+        parent::setUp();
+        set_config('enrol_plugins_enabled', 'manual,flexaccess');
+    }
+
+    /**
      * Create a batch and return its id plus rows that convert its members.
      *
      * @param int $count Number of members.

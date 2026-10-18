@@ -56,8 +56,10 @@ class account_recovered extends \core\event\base {
         $old = s((string) ($this->other['oldstate'] ?? ''));
         $new = s((string) ($this->other['newstate'] ?? ''));
         $count = count((array) ($this->other['enrolments'] ?? []));
+        $overall = s((string) ($this->other['overall'] ?? ''));
         return "The user with id '{$this->userid}' recovered the FlexAccess account of the user with id "
-            . "'{$this->relateduserid}' ({$scope} scope): state {$old} -> {$new}, {$count} enrolment(s) reactivated.";
+            . "'{$this->relateduserid}' ({$scope} scope): state {$old} -> {$new}, {$count} enrolment action(s), "
+            . "result: {$overall}.";
     }
 
     /**

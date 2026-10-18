@@ -32,6 +32,14 @@ use tool_flexaccess\privacy\provider;
  * @covers \tool_flexaccess\privacy\provider
  */
 final class privacy_batch_test extends \advanced_testcase {
+    /**
+     * Both halves of FlexAccess are enabled on any site that provisions access lists.
+     */
+    protected function setUp(): void {
+        parent::setUp();
+        set_config('enrol_plugins_enabled', 'manual,flexaccess');
+    }
+
     public function test_batch_membership_yields_a_context(): void {
         $this->resetAfterTest();
         $this->setAdminUser();

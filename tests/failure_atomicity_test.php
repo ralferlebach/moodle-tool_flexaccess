@@ -28,6 +28,14 @@ use tool_flexaccess\local\invitation;
  * @covers \tool_flexaccess\local\batch
  */
 final class failure_atomicity_test extends \advanced_testcase {
+    /**
+     * Both halves of FlexAccess are enabled on any site that provisions access lists.
+     */
+    protected function setUp(): void {
+        parent::setUp();
+        set_config('enrol_plugins_enabled', 'manual,flexaccess');
+    }
+
     public function test_failed_member_leaves_no_orphaned_account(): void {
         global $DB;
         $this->resetAfterTest();

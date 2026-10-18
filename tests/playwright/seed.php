@@ -78,17 +78,20 @@ echo "export FLEXACCESS_COURSE_NAME='" . $coursename . "'\n";
 // pages. Created on a throwaway CI site only; the specs skip when the variables are absent.
 $adminuser = $DB->get_record('user', ['username' => 'flexa11y'], '*', IGNORE_MISSING);
 if (!$adminuser) {
-    $adminuser = \core_user::get_user(
-        user_create_user((object) [
-            'username' => 'flexa11y',
-            'password' => 'Flex-A11y-Pass!1',
-            'firstname' => 'Access',
-            'lastname' => 'Checker',
-            'email' => 'flexa11y@example.invalid',
-            'confirmed' => 1,
-            'mnethostid' => $CFG->mnet_localhost_id,
-        ], true, false)
-    );
+    $newuser = (object) [
+        'username' => 'flexa11y',
+        'password' => 'Flex-A11y-Pass!1',
+        'firstname' => 'Access',
+        'lastname' => 'Checker',
+        'email' => 'flexa11y@example.invalid',
+        'confirmed' => 1,
+        'mnethostid' => $CFG->mnet_localhost_id,
+    ];
+    // Moodle 5.3 deprecates user_create_user() in favour of \core\user::create_user().
+    $createdid = method_exists(\core\user::class, 'create_user')
+        ? \core\user::create_user($newuser, true, false)
+        : user_create_user($newuser, true, false);
+    $adminuser = \core_user::get_user($createdid);
 }
 role_assign(
     $DB->get_field('role', 'id', ['shortname' => 'manager']),
@@ -96,8 +99,74 @@ role_assign(
     \context_system::instance()->id
 );
 
+// Colour modes (Moodle 5.3+, theme_boost): enabled, and the manager follows the browser's colour scheme,
+// so the navigation smoke test can check the FlexAccess pages in light and in dark mode.
+if (class_exists('\\theme_boost\\colour_mode')) {
+    set_config('enablecolourmodes', 1, 'theme_boost');
+    set_user_preference(\theme_boost\colour_mode::PREFERENCE, \theme_boost\colour_mode::AUTO, $adminuser->id);
+}
+
 // Deliberately NOT called FLEXACCESS_ADMIN_*: this is a manager, not the site administrator.
 // Overriding the admin credentials with it denied the specs access to /admin pages that require
 // moodle/site:config.
 echo "export FLEXACCESS_MANAGER_USER='flexa11y'\n";
 echo "export FLEXACCESS_MANAGER_PASS='Flex-A11y-Pass!1'\n";
+
+// Recovery fixtures (tool_flexaccess #10): three permanent FlexAccess accounts whose FlexAccess course
+// access in the recovery course is suspended - one plainly recoverable, one whose Moodle user an
+// administrator suspended, and one whose course has its FlexAccess enrolment method disabled.
+$recoverycourse = create_course((object) [
+    'fullname' => 'Recovery course',
+    'shortname' => uniqid('FAPWREC', true),
+    'category' => $category->id,
+    'visible' => 1,
+]);
+$blockedcourse = create_course((object) [
+    'fullname' => 'Closed course',
+    'shortname' => uniqid('FAPWCLOSED', true),
+    'category' => $category->id,
+    'visible' => 1,
+]);
+$recoveryenrol = $DB->get_record('enrol', ['id' => $plugin->add_instance($recoverycourse, ['status' => ENROL_INSTANCE_ENABLED])]);
+$blockedenrol = $DB->get_record('enrol', ['id' => $plugin->add_instance($blockedcourse, ['status' => ENROL_INSTANCE_ENABLED])]);
+$participantroleid = \enrol_flexaccess\local\participant_role::get_id();
+$recoverypass = 'Recover-Me-Pass!1';
+$recoveryusers = [];
+foreach (['ok' => ['Robin', 'Recovers'], 'locked' => ['Lena', 'Locked'], 'closed' => ['Clara', 'Closed']] as $key => $name) {
+    $username = 'flexrecover' . $key;
+    $existing = $DB->get_record('user', ['username' => $username], 'id', IGNORE_MISSING);
+    $userid = $existing ? (int) $existing->id : (int) user_create_user((object) [
+        'username' => $username,
+        'password' => $recoverypass,
+        'auth' => 'flexaccess',
+        'firstname' => $name[0],
+        'lastname' => $name[1],
+        'email' => $username . '@example.invalid',
+        'confirmed' => 1,
+        'mnethostid' => $CFG->mnet_localhost_id,
+    ], true, false);
+    if (!$DB->record_exists('auth_flexaccess_account', ['userid' => $userid])) {
+        \auth_flexaccess\local\account_service::create_authenticated(
+            $userid,
+            \auth_flexaccess\local\account_service::generate_unique_reference()
+        );
+    }
+    // Set explicitly: the journey signs in with it, and user_create_user() leaves it to the auth plugin.
+    update_internal_user_password(\core_user::get_user($userid), $recoverypass);
+    $instance = $key === 'closed' ? $blockedenrol : $recoveryenrol;
+    $plugin->enrol_user($instance, $userid, $participantroleid, 0, 0, ENROL_USER_SUSPENDED);
+    $recoveryusers[$key] = $userid;
+}
+// Suspended by an administrator: FlexAccess must not lift this, and must not report success.
+$DB->set_field('user', 'suspended', 1, ['id' => $recoveryusers['locked']]);
+$DB->set_field('auth_flexaccess_account', 'lockedby', 'admin', ['userid' => $recoveryusers['locked']]);
+// A deliberately disabled enrolment method stays disabled; recovery shows it as the blocker.
+$DB->set_field('enrol', 'status', ENROL_INSTANCE_DISABLED, ['id' => $blockedenrol->id]);
+\core\session\manager::kill_user_sessions($recoveryusers['locked']);
+
+echo "export FLEXACCESS_RECOVERY_COURSE_ID='" . $recoverycourse->id . "'\n";
+echo "export FLEXACCESS_RECOVERY_CLOSED_COURSE_ID='" . $blockedcourse->id . "'\n";
+echo "export FLEXACCESS_RECOVERY_OK_ID='" . $recoveryusers['ok'] . "'\n";
+echo "export FLEXACCESS_RECOVERY_LOCKED_ID='" . $recoveryusers['locked'] . "'\n";
+echo "export FLEXACCESS_RECOVERY_CLOSED_ID='" . $recoveryusers['closed'] . "'\n";
+echo "export FLEXACCESS_RECOVERY_PASS='" . $recoverypass . "'\n";

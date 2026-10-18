@@ -298,7 +298,8 @@ final class recovery_test extends \advanced_testcase {
 
         foreach ([(int) $this->course->id, null] as $scope) {
             $result = recovery::recover($userid, $scope);
-            $this->assertSame([recovery::NOT_ELIGIBLE], $result->outcomes);
+            $this->assertSame([recovery::ACCOUNT_BLOCKED_FOREIGN_LOCK], $result->outcomes);
+            $this->assertSame(recovery::EFFECTIVE_ACCESS_NOT_RESTORED, $result->overall);
             $this->assertSame('foreignlock', $result->reason);
             $this->assertEquals(1, $DB->get_field('user', 'suspended', ['id' => $userid]));
         }

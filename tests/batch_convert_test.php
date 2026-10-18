@@ -29,6 +29,14 @@ use tool_flexaccess\local\batch_import;
  */
 final class batch_convert_test extends \advanced_testcase {
     /**
+     * Both halves of FlexAccess are enabled on any site that provisions access lists.
+     */
+    protected function setUp(): void {
+        parent::setUp();
+        set_config('enrol_plugins_enabled', 'manual,flexaccess');
+    }
+
+    /**
      * Skip when the sibling plugins are not installed.
      *
      * @return void
