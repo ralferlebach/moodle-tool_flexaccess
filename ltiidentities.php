@@ -125,13 +125,24 @@ if (in_array($action, ['approve', 'recheck', 'repoint', 'removebinding'], true))
         $message = get_string('ltimergerechecked', 'tool_flexaccess', s($result->status));
         $type = $result->reasons ? \core\output\notification::NOTIFY_WARNING : \core\output\notification::NOTIFY_SUCCESS;
     } else if ($action === 'repoint') {
-        $result = \auth_flexaccess\api::repoint_merged_lti_identity($fromid, $toid);
-        $message = get_string('ltimergerepointed', 'tool_flexaccess', (object) [
-            'bindings' => $result->bindings,
-            'ltiusers' => $result->ltiusers,
-            'conflicts' => count($result->conflicts),
-        ]);
-        $type = $result->reasons ? \core\output\notification::NOTIFY_WARNING : \core\output\notification::NOTIFY_SUCCESS;
+        $verified = (bool) optional_param('ownershipverified', 0, PARAM_BOOL);
+        $result = \auth_flexaccess\api::repoint_merged_lti_identity($fromid, $toid, $verified);
+        if ($result->status === 'repointed' || $result->status === 'nothingtodo') {
+            $message = get_string('ltimergerepointed', 'tool_flexaccess', (object) [
+                'bindings' => $result->bindings,
+                'ltiusers' => $result->ltiusers,
+            ]);
+            $type = $result->reasons ? \core\output\notification::NOTIFY_WARNING : \core\output\notification::NOTIFY_SUCCESS;
+        } else {
+            // Refused or conflicting: nothing was changed.
+            $message = get_string('ltimergerepointrefused', 'tool_flexaccess', implode('; ', array_map(
+                static fn(string $code): string =>
+                    get_string_manager()->string_exists('ltirepointreason_' . $code, 'tool_flexaccess')
+                    ? get_string('ltirepointreason_' . $code, 'tool_flexaccess') : s($code),
+                $result->reasons
+            )));
+            $type = \core\output\notification::NOTIFY_ERROR;
+        }
     } else if ($action === 'removebinding') {
         $removed = \auth_flexaccess\api::remove_lti_binding($bindingid);
         $message = get_string($removed ? 'ltibindingremoved' : 'ltibindingnotremoved', 'tool_flexaccess');
@@ -219,16 +230,50 @@ if (!$open) {
         get_string('ltimergefrom', 'tool_flexaccess'),
         get_string('ltimergeto', 'tool_flexaccess'),
         get_string('ltimergestatus', 'tool_flexaccess'),
+        get_string('ltimergeevidence', 'tool_flexaccess'),
         get_string('ltimergereasons', 'tool_flexaccess'),
         get_string('actions'),
     ];
     foreach ($open as $row) {
         $params = ['fromid' => $row->fromuserid, 'toid' => $row->touserid];
         $actions = [$button('recheck', $params, get_string('ltimergerecheck', 'tool_flexaccess'))];
+        $evidence = \auth_flexaccess\api::merge_evidence((int) $row->fromuserid, (int) $row->touserid);
         if (preg_match('/sourcebindings|sourceltiusers/', (string) $row->reasons)) {
-            $actions[] = $button('repoint', $params, get_string('ltimergerepoint', 'tool_flexaccess'));
+            // Re-pointing moves data of the merged-away identity: only offered for a merge tool_mergeusers
+            // confirmed, with the explicit ownership confirmation (auth_flexaccess #14).
+            $blockers = \auth_flexaccess\api::lti_repoint_blockers((int) $row->fromuserid, (int) $row->touserid);
+            if (!$blockers) {
+                $form = html_writer::start_tag('form', [
+                    'method' => 'post',
+                    'action' => $pageurl->out(false),
+                    'class' => 'd-inline',
+                ]);
+                foreach (['sesskey' => sesskey(), 'action' => 'repoint'] + $params as $name => $value) {
+                    $form .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => $name, 'value' => $value]);
+                }
+                $checkboxid = 'repoint-' . (int) $row->id;
+                $form .= html_writer::empty_tag('input', [
+                    'type' => 'checkbox',
+                    'name' => 'ownershipverified',
+                    'value' => 1,
+                    'id' => $checkboxid,
+                    'required' => 'required',
+                ]);
+                $form .= ' ' . html_writer::label(get_string('ltirepointownership', 'tool_flexaccess'), $checkboxid) . ' ';
+                $form .= html_writer::empty_tag('input', [
+                    'type' => 'submit',
+                    'value' => get_string('ltimergerepoint', 'tool_flexaccess'),
+                    'class' => 'btn btn-secondary btn-sm',
+                ]);
+                $actions[] = $form . html_writer::end_tag('form');
+            } else {
+                $actions[] = html_writer::span(get_string('ltimergerepointunavailable', 'tool_flexaccess', implode('; ', array_map(
+                    static fn(string $code): string => get_string('ltirepointreason_' . $code, 'tool_flexaccess'),
+                    $blockers
+                ))), 'text-muted small');
+            }
         }
-        if ($row->status === 'approved' && $mergeusers) {
+        if ($row->status === 'preapproved' && $mergeusers) {
             $actions[] = html_writer::link(
                 new moodle_url('/admin/tool/mergeusers/index.php'),
                 get_string('ltimergeopenmergeusers', 'tool_flexaccess')
@@ -238,6 +283,10 @@ if (!$open) {
             tool_flexaccess_ltiidentities_user((int) $row->fromuserid),
             tool_flexaccess_ltiidentities_user((int) $row->touserid),
             get_string('ltimergestatus_' . $row->status, 'tool_flexaccess'),
+            $evidence ? get_string('ltimergeevidenceconfirmed', 'tool_flexaccess', (object) [
+                'logid' => $evidence->logid,
+                'time' => userdate($evidence->timeconfirmed),
+            ]) : get_string('ltimergeevidencenone', 'tool_flexaccess'),
             tool_flexaccess_ltiidentities_reasons($row->reasons),
             implode(' ', $actions),
         ];

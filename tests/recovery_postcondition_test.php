@@ -324,4 +324,38 @@ final class recovery_postcondition_test extends \advanced_testcase {
         $this->assertSame('', $other['postcondition']['account']);
         $this->assertSame(['ok'], array_values($other['postcondition']['courses']));
     }
+
+    /**
+     * Recovery at Core's rounding boundary (enrol_flexaccess #11): a start inside the 100-second window is
+     * accepted by is_enrolled() but not yet by Core's enrolled-users lists, so neither the preview nor the
+     * result claims restored access; an end inside the window is renewed by the reactivation.
+     */
+    public function test_recovery_follows_core_rounding_window(): void {
+        global $DB;
+        // Fixed instants just ahead of the clock: ...49 rounds down, ...51 rounds up.
+        $base = (intdiv(time(), 100) + 1) * 100;
+
+        // Start inside the window: now = base + 49 rounds to base, start = now.
+        $now = $base + 49;
+        $userid = $this->member();
+        $DB->set_field('user_enrolments', 'timestart', $now, ['id' => $this->ueid($userid)]);
+        $snapshot = recovery::snapshot($userid, (int) $this->course->id, $now);
+        $this->assertSame('not_started', recovery::predict_enrolment($snapshot, $snapshot->enrolments[0], true));
+        $result = recovery::recover($userid, (int) $this->course->id, ['reactivate' => [$this->ueid($userid)]], $now);
+        $this->assertSame(recovery::EFFECTIVE_ACCESS_NOT_RESTORED, $result->overall);
+        $this->assertContains(recovery::ENROLMENT_NOT_STARTED, $result->outcomes);
+        $this->assertSame('not_started', $result->postcondition->courses[(int) $this->course->id]);
+        // Once Core's rounded time has passed the start, the same enrolment is effective.
+        $later = \enrol_flexaccess\api::effective_enrolment_state($userid, (int) $this->course->id, $now + 100);
+        $this->assertSame('ok', $later->state);
+
+        // End inside the window: now = base + 51 rounds to base + 100, end = base + 90.
+        $now = $base + 51;
+        $other = $this->member(ENROL_USER_SUSPENDED, $base + 90);
+        $result = recovery::recover($other, (int) $this->course->id, ['reactivate' => [$this->ueid($other)]], $now);
+        $this->assertContains(recovery::ENROLMENT_REACTIVATED, $result->outcomes);
+        $this->assertSame(recovery::EFFECTIVE_ACCESS_RESTORED, $result->overall);
+        $timeend = (int) $DB->get_field('user_enrolments', 'timeend', ['id' => $this->ueid($other)]);
+        $this->assertTrue($timeend === 0 || $timeend > $base + 100, 'The end was renewed beyond Core\'s rounded time.');
+    }
 }

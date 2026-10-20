@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 (2026101800) — 2026-10-18 — Release-Gate mit exakten Commits, Umhängen nur nach bestätigtem Merge
+- **Plugin-Familie in der CI exakt gepinnt (#12, RELEASE-CI).** `.github/flexaccess-family.json` und `.github/scripts/flexaccess_family.py` (in allen vier Repositories gleich) legen die Geschwister und tool_mergeusers je Lauf auf Commit-SHAs fest. Die Geschwister müssen dieselbe Familienversion tragen; es gibt keinen Rückfall auf einen anderen Branch. Jede installierte Version wird gegen den Lock geprüft. Moodle-, PHP- und Datenbankversion und die SHA-Matrix stehen in der Job-Zusammenfassung und als Artefakt.
+  - Neues **Release-Gate** `family-release.yml`: Ein committeter Lock (`.github/flexaccess-family.lock.json`, Modus „propose“ erzeugt ihn) wird mit PHPUnit aller vier Plugins auf 4.5/5.0/5.2/5.3 × PostgreSQL/MariaDB und mit den Zwei-Site-LTI-Journeys auf 4.5/5.3 getestet. Die SHA-256 der Release-ZIPs (`git archive`) werden geprüft bzw. protokolliert. Ablauf: `docs/release-gate.md`.
+  - Behebt die roten Läufe vom 18.10.2026 (auth-PHPUnit `effective_enrolment_state()`, tool-Behat `count_multiple_instances()` / `$problems`): Die CI hatte die Geschwister vom beweglichen Branch `development` geholt, der noch den alten Stand trug. Dieser Fall bricht jetzt mit einer klaren Meldung ab („The plugin family is not at one version …“), statt gegen fremden Code zu testen.
+  - Selbsttests des Resolvers mit lokalen Test-Repositories: fehlender Branch, ungleiche Versionen, fehlende/verkürzte SHA, ungepinntes tool_mergeusers, manipulierter Lock, ZIP-Prüfsummen-Abweichung, fehlender Release-Lock.
+- **LTI-Identitäten (zu auth #14):** Die Seite zeigt den Nachweis der Zusammenführung (tool_mergeusers-Protokoll) und bietet „Umhängen“ nur für bestätigte Merges an, mit Bestätigung der Zugehörigkeit; sonst nennt sie den Grund. Neuer Playwright-Test: Ein nur registriertes Paar bietet kein Umhängen an.
+- **Recovery (zu enrol #11):** „Zugang wiederhergestellt“ nur, wenn Core die Einschreibung auch in seinen gerundeten Listen führt; Integrationstest an der Rundungsgrenze.
+- Version `2026101800`, Release `1.2.0`, `MATURITY_STABLE`, `supported` [405, 503]. Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026101800`.
+
 ## 1.2.0 (2026101700) — 2026-10-17 — Recovery nur bei erreichtem Ziel, LTI-Identitäten, Moodle 5.3
 - **Recovery meldet, was tatsächlich erreicht wurde (#10, RECOVERY).**
   - **Bisher:** Scheiterte die Kontowiederherstellung (z. B. fremde Sperre), wurde die Einschreibung trotzdem reaktiviert, und die Seite zeigte „nicht berechtigt“ und „Einschreibung reaktiviert“ nebeneinander. Eine Reaktivierung auf einer deaktivierten Methode oder ohne Rolle galt als Erfolg.

@@ -28,7 +28,7 @@ Requirements
 This plugin requires Moodle 4.5 LTS up to Moodle 5.3 (tested on 4.5, 5.0, 5.2 and 5.3).
 
 It also requires the other FlexAccess plugins. All four are released together and must be installed
-in the same version (currently 1.2.0 / 2026101700):
+in the same version (currently 1.2.0 / 2026101800):
 
 * **auth_flexaccess (FlexAccess authentication)** - required dependency, declared in version.php\
   https://github.com/ralferlebach/moodle-auth_flexaccess
@@ -127,6 +127,8 @@ Passwords are never stored in clear. Issuing the credentials therefore rotates e
 The login cards are laid out so the sheet can be cut: the gap between two cards is twice the page margin, so halving the sheet and halving again leaves every card with the same border. A free text supplied when the list is requested is printed on each card.
 
 Recovery reports what it actually achieved. A recovery only reports "access restored" when the account can sign in and the course enrolment is effective (plugin and method enabled, enrolment active and within its dates, participant role present); otherwise it names the blocker - for example a disabled enrolment method - and links to where it can be fixed. The preview shows the same facts before anything is changed.
+
+**Releases of the plugin family.** All four plugins are tested as one exactly pinned combination: every CI run resolves the sibling plugins once to commit SHAs (all at the same version, no fallback to another branch) and installs exactly those, with tool_mergeusers pinned to a commit. The release gate (workflow "FlexAccess family release gate") tests a committed lock of all four commits on Moodle 4.5 to 5.3 including the two-site LTI journeys; see [docs/release-gate.md](docs/release-gate.md).
 
 **Pitfall:** invitations and campaign links are bearer secrets. Only their hash is stored, so a lost link cannot be recovered - it can only be replaced, which invalidates the old one.
 

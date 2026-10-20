@@ -162,7 +162,7 @@ $DB->set_field('user', 'suspended', 1, ['id' => $recoveryusers['locked']]);
 $DB->set_field('auth_flexaccess_account', 'lockedby', 'admin', ['userid' => $recoveryusers['locked']]);
 // A deliberately disabled enrolment method stays disabled; recovery shows it as the blocker.
 $DB->set_field('enrol', 'status', ENROL_INSTANCE_DISABLED, ['id' => $blockedenrol->id]);
-\core\session\manager::kill_user_sessions($recoveryusers['locked']);
+\core\session\manager::destroy_user_sessions($recoveryusers['locked']);
 
 echo "export FLEXACCESS_RECOVERY_COURSE_ID='" . $recoverycourse->id . "'\n";
 echo "export FLEXACCESS_RECOVERY_CLOSED_COURSE_ID='" . $blockedcourse->id . "'\n";
@@ -170,3 +170,28 @@ echo "export FLEXACCESS_RECOVERY_OK_ID='" . $recoveryusers['ok'] . "'\n";
 echo "export FLEXACCESS_RECOVERY_LOCKED_ID='" . $recoveryusers['locked'] . "'\n";
 echo "export FLEXACCESS_RECOVERY_CLOSED_ID='" . $recoveryusers['closed'] . "'\n";
 echo "export FLEXACCESS_RECOVERY_PASS='" . $recoverypass . "'\n";
+
+// Merge review fixture (auth_flexaccess #14): a pair that is only registered - two live accounts, never
+// merged by tool_mergeusers - with an LTI binding on the account to be removed. The LTI identities page
+// must not offer to move that binding.
+$reviewsource = (int) \auth_flexaccess\api::create_temporary_user(time() + DAYSECS);
+$DB->set_field('user', 'firstname', 'Unmerged', ['id' => $reviewsource]);
+$DB->set_field('user', 'lastname', 'Source', ['id' => $reviewsource]);
+$bindingkey = [
+    'issuer256' => hash('sha256', 'https://platform.example.invalid'),
+    'sub256' => hash('sha256', 'unmerged-1'),
+];
+if (!$DB->record_exists('auth_lti_linked_login', $bindingkey)) {
+    $DB->insert_record('auth_lti_linked_login', (object) [
+        'userid' => $reviewsource,
+        'issuer' => 'https://platform.example.invalid',
+        'issuer256' => hash('sha256', 'https://platform.example.invalid'),
+        'sub' => 'unmerged-1',
+        'sub256' => hash('sha256', 'unmerged-1'),
+        'timecreated' => time(),
+        'timemodified' => time(),
+    ]);
+}
+$reviewrow = \auth_flexaccess\local\merge_registry::record($reviewsource, (int) $recoveryusers['ok'], 'admin');
+\auth_flexaccess\local\merge_registry::finish($reviewrow, \auth_flexaccess\local\merge_registry::REVIEW, ['sourcebindings'], []);
+echo "export FLEXACCESS_MERGE_REVIEW_SOURCE_ID='" . $reviewsource . "'\n";
