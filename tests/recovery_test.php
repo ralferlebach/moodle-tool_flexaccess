@@ -30,6 +30,9 @@ use tool_flexaccess\local\recovery;
  * @covers \tool_flexaccess\event\account_recovered
  */
 final class recovery_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /** @var \stdClass Course. */
     private $course;
     /** @var \stdClass FlexAccess instance. */
@@ -45,6 +48,7 @@ final class recovery_test extends \advanced_testcase {
     protected function setUp(): void {
         global $DB;
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         if (!class_exists('\auth_flexaccess\api') || !method_exists('\auth_flexaccess\api', 'recover_account')) {
             $this->markTestSkipped('Requires auth_flexaccess and enrol_flexaccess 1.1.0+.');
         }
@@ -66,7 +70,7 @@ final class recovery_test extends \advanced_testcase {
         return (int) \enrol_flexaccess\local\enrol_service::reserve_and_enrol(
             (int) $this->instance->id,
             fn(): int => \auth_flexaccess\api::create_temporary_user($expires, (int) $this->course->id),
-            time()
+            $this->clock->time()
         )->userid;
     }
 
@@ -89,7 +93,7 @@ final class recovery_test extends \advanced_testcase {
     public function test_provisional_expired_recovered_then_verified(): void {
         global $DB;
         $this->setAdminUser();
-        $userid = $this->visitor(time() + 3600);
+        $userid = $this->visitor($this->clock->time() + 3600);
         $this->assertSame('verificationsent', \auth_flexaccess\api::request_persistence(
             $userid,
             'late.verifier@example.com',
@@ -97,7 +101,7 @@ final class recovery_test extends \advanced_testcase {
             'Verifier',
             'Str0ng-Pass!23'
         ));
-        $DB->set_field('auth_flexaccess_account', 'timeexpires', time() - 1, ['userid' => $userid]);
+        $DB->set_field('auth_flexaccess_account', 'timeexpires', $this->clock->time() - 1, ['userid' => $userid]);
         account_service::expire_due();
         $this->assertSame(account_state::EXPIRED, \auth_flexaccess\api::get_account($userid)->accountstate);
         // The regular path cannot free it any more.
@@ -109,12 +113,12 @@ final class recovery_test extends \advanced_testcase {
         $account = \auth_flexaccess\api::get_account($userid);
         // Never straight to ACTIVE: verification is not bypassed.
         $this->assertSame(account_state::PROVISIONAL, $account->accountstate);
-        $this->assertGreaterThan(time(), (int) $account->timeexpires);
+        $this->assertGreaterThan($this->clock->time(), (int) $account->timeexpires);
         $this->assertEquals(0, $DB->get_field('user', 'suspended', ['id' => $userid]));
 
         // The fresh verification link completes the account.
         $sink = $this->redirectEmails();
-        \auth_flexaccess\local\mail_worker::run(time());
+        \auth_flexaccess\local\mail_worker::run($this->clock->time());
         $token = null;
         foreach ($sink->get_messages() as $message) {
             if (preg_match('/token=([A-Za-z0-9]+)/', quoted_printable_decode($message->body), $m)) {
@@ -134,7 +138,7 @@ final class recovery_test extends \advanced_testcase {
      */
     public function test_expired_with_active_enrolment(): void {
         $this->setAdminUser();
-        $userid = $this->visitor(time() - 1);
+        $userid = $this->visitor($this->clock->time() - 1);
         account_service::expire_due();
         $before = $this->ue($userid);
         $snapshot = recovery::snapshot($userid, (int) $this->course->id);
@@ -152,7 +156,7 @@ final class recovery_test extends \advanced_testcase {
      */
     public function test_expired_with_suspended_enrolment(): void {
         $this->setAdminUser();
-        $userid = $this->visitor(time() - 1);
+        $userid = $this->visitor($this->clock->time() - 1);
         account_service::expire_due();
         enrol_get_plugin('flexaccess')->update_user_enrol($this->instance, $userid, ENROL_USER_SUSPENDED);
         $snapshot = recovery::snapshot($userid, (int) $this->course->id);
@@ -176,7 +180,7 @@ final class recovery_test extends \advanced_testcase {
      */
     public function test_unenrolled_user_requires_explicit_reenrol(): void {
         $this->setAdminUser();
-        $userid = $this->visitor(time() - 1);
+        $userid = $this->visitor($this->clock->time() - 1);
         account_service::expire_due();
         enrol_get_plugin('flexaccess')->unenrol_user($this->instance, $userid);
 
@@ -195,9 +199,9 @@ final class recovery_test extends \advanced_testcase {
      * @return void
      */
     public function test_course_batch_mixed(): void {
-        $expired = $this->visitor(time() - 1);
+        $expired = $this->visitor($this->clock->time() - 1);
         account_service::expire_due();
-        $live = $this->visitor(time() + 3600);
+        $live = $this->visitor($this->clock->time() + 3600);
         $foreign = (int) $this->getDataGenerator()->create_user()->id; // Not a FlexAccess user.
         $this->setUser($this->teacher);
         $sink = $this->redirectEvents();
@@ -224,8 +228,8 @@ final class recovery_test extends \advanced_testcase {
     public function test_system_batch_partial_failure(): void {
         global $DB;
         $this->setAdminUser();
-        $ok = $this->visitor(time() - 1);
-        $broken = $this->visitor(time() - 1);
+        $ok = $this->visitor($this->clock->time() - 1);
+        $broken = $this->visitor($this->clock->time() - 1);
         account_service::expire_due();
         // Corrupt one user so its recovery throws inside the transaction.
         $DB->set_field('auth_flexaccess_account', 'accountstate', account_state::EXPIRED, ['userid' => $broken]);
@@ -243,7 +247,7 @@ final class recovery_test extends \advanced_testcase {
      * @return void
      */
     public function test_capabilities_and_scope(): void {
-        $userid = $this->visitor(time() - 1);
+        $userid = $this->visitor($this->clock->time() - 1);
         account_service::expire_due();
         // A student may not recover.
         $student = $this->getDataGenerator()->create_and_enrol($this->course, 'student');
@@ -304,9 +308,9 @@ final class recovery_test extends \advanced_testcase {
             $this->assertEquals(1, $DB->get_field('user', 'suspended', ['id' => $userid]));
         }
         // Also an expired temporary account whose suspension predates the expiry stays locked.
-        $temp = $this->visitor(time() + 3600);
+        $temp = $this->visitor($this->clock->time() + 3600);
         $DB->set_field('user', 'suspended', 1, ['id' => $temp]);
-        $DB->set_field('auth_flexaccess_account', 'timeexpires', time() - 1, ['userid' => $temp]);
+        $DB->set_field('auth_flexaccess_account', 'timeexpires', $this->clock->time() - 1, ['userid' => $temp]);
         account_service::expire_due();
         $this->assertSame('foreignlock', recovery::recover($temp, null)->reason);
         $this->assertEquals(1, $DB->get_field('user', 'suspended', ['id' => $temp]));
@@ -320,7 +324,7 @@ final class recovery_test extends \advanced_testcase {
      */
     public function test_course_recovery_with_cross_course_impact(): void {
         global $DB;
-        $userid = $this->visitor(time() - 1);
+        $userid = $this->visitor($this->clock->time() - 1);
         $second = $this->getDataGenerator()->create_course();
         $secondid = \enrol_flexaccess\local\enrol_service::ensure_instance((int) $second->id);
         enrol_get_plugin('flexaccess')->enrol_user($DB->get_record('enrol', ['id' => $secondid]), $userid);
@@ -345,7 +349,7 @@ final class recovery_test extends \advanced_testcase {
         $this->assertContains(recovery::RECOVERED, $confirmed->outcomes);
 
         // Without another effective enrolment there is no impact and no extra step.
-        $single = $this->visitor(time() - 1);
+        $single = $this->visitor($this->clock->time() - 1);
         account_service::expire_due();
         $this->setUser($this->teacher);
         $singlesnapshot = recovery::snapshot($single, (int) $this->course->id);
@@ -365,7 +369,7 @@ final class recovery_test extends \advanced_testcase {
         $small = [];
         $large = [];
         for ($i = 0; $i < 40; $i++) {
-            $id = $this->visitor(time() + 3600);
+            $id = $this->visitor($this->clock->time() + 3600);
             if ($i < 5) {
                 $small[] = $id;
             }

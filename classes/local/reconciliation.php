@@ -135,7 +135,7 @@ final class reconciliation {
      * @return array<int, \stdClass> Keyed by user id; users without FlexAccess account are omitted.
      */
     public static function inspect_users(array $userids, ?int $now = null): array {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         // Every account row, including those of deleted users: they are classified, never skipped.
         $accounts = \auth_flexaccess\api::get_accounts($userids, true);
         if (!$accounts) {
@@ -283,7 +283,7 @@ final class reconciliation {
         if (!isset($snapshots[$userid])) {
             return null;
         }
-        return self::process($snapshots[$userid], $mode, $source, $now ?? time());
+        return self::process($snapshots[$userid], $mode, $source, $now ?? \core\di::get(\core\clock::class)->time());
     }
 
     /** Decision: the suspension comes from FlexAccess (it may be lifted by a recovery). */
@@ -302,7 +302,8 @@ final class reconciliation {
     public static function lock_review_userids(int $limit = 0): array {
         global $DB;
         [$insql, $params] = $DB->get_in_or_equal(self::LOCK_REVIEWS, SQL_PARAMS_NAMED);
-        return array_map('intval', $DB->get_fieldset_sql(
+        // Moodle's get_fieldset_sql() takes no limit; get_records_sql() does (userid is unique per group).
+        return array_map('intval', array_keys($DB->get_records_sql(
             "SELECT userid FROM {" . self::CASES . "}
               WHERE status = 'open' AND code $insql
            GROUP BY userid
@@ -310,7 +311,7 @@ final class reconciliation {
             $params,
             0,
             $limit
-        ));
+        )));
     }
 
     /**
@@ -336,7 +337,7 @@ final class reconciliation {
         bool $reactivateall = false,
         ?int $now = null
     ): array {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         if (!in_array($decision, [self::DECIDE_FLEXACCESS, self::DECIDE_ADMIN], true)) {
             throw new \coding_exception('Unknown lock-origin decision: ' . $decision);
         }
@@ -444,8 +445,10 @@ final class reconciliation {
      * @return \stdClass Run state (status, cursor, counters) or, in inspect mode, the report.
      */
     public static function run(string $mode, string $source, int $timelimit = 0, ?int $now = null): \stdClass {
-        $now = $now ?? time();
-        $started = microtime(true);
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
+        // The time limit is a run-time budget: measured monotonically, never with the (possibly frozen) clock.
+        $watch = stopwatch::instance();
+        $started = $watch->start();
         if ($mode === self::MODE_INSPECT) {
             return self::inspect_all($now, $timelimit);
         }
@@ -471,7 +474,7 @@ final class reconciliation {
             }
             $state->cursor = (int) end($userids);
             self::save_state($state);
-        } while ($timelimit === 0 || microtime(true) - $started < $timelimit);
+        } while ($watch->within($started, $timelimit));
 
         if (!\auth_flexaccess\api::list_account_userids($state->cursor, 1)) {
             self::record_orphan_restrictions($now);
@@ -741,7 +744,8 @@ final class reconciliation {
      * @return \stdClass ->checked, ->complete, ->repairs (rule => user ids), ->reviews (code => user ids).
      */
     private static function inspect_all(int $now, int $timelimit): \stdClass {
-        $started = microtime(true);
+        $watch = stopwatch::instance();
+        $started = $watch->start();
         $report = (object) ['checked' => 0, 'complete' => false, 'repairs' => [], 'reviews' => []];
         $cursor = 0;
         do {
@@ -761,7 +765,7 @@ final class reconciliation {
                 $report->checked++;
             }
             $cursor = (int) end($userids);
-        } while ($timelimit === 0 || microtime(true) - $started < $timelimit);
+        } while ($watch->within($started, $timelimit));
         $problems = array_diff(\enrol_flexaccess\api::role_model_problems(), ['participantsystemassigned']);
         if ($problems) {
             $report->repairs[self::RULE_ROLEMODEL][] = 0;

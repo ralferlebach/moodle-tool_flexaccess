@@ -229,7 +229,7 @@ final class batch_import {
         ?int $now = null
     ): array {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $converted = 0;
         $skipped = 0;
         $errors = [];

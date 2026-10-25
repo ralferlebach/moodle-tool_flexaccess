@@ -29,6 +29,9 @@ use tool_flexaccess\local\recovery;
  * @covers \tool_flexaccess\event\account_recovered
  */
 final class recovery_postcondition_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /** @var \stdClass Course. */
     private \stdClass $course;
 
@@ -41,6 +44,7 @@ final class recovery_postcondition_test extends \advanced_testcase {
     protected function setUp(): void {
         global $DB;
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         $this->resetAfterTest();
         set_config('enrol_plugins_enabled', 'manual,flexaccess');
         set_config('auth', 'flexaccess');
@@ -118,7 +122,7 @@ final class recovery_postcondition_test extends \advanced_testcase {
      * Foreign lock + selected reactivation of an active enrolment: overall "access not restored".
      */
     public function test_foreign_lock_with_selected_reactivation_is_not_restored(): void {
-        $userid = $this->member(ENROL_USER_ACTIVE, time() - 10);
+        $userid = $this->member(ENROL_USER_ACTIVE, $this->clock->time() - 10);
         $this->foreign_lock($userid);
         foreach ([(int) $this->course->id, null] as $scope) {
             $result = recovery::recover($userid, $scope, ['reactivate' => [$this->ueid($userid)]]);
@@ -189,7 +193,7 @@ final class recovery_postcondition_test extends \advanced_testcase {
      */
     public function test_expired_enrolment_is_effective_after_reactivation(): void {
         global $DB;
-        $userid = $this->member(ENROL_USER_ACTIVE, time() - HOURSECS);
+        $userid = $this->member(ENROL_USER_ACTIVE, $this->clock->time() - HOURSECS);
         $snapshot = recovery::snapshot($userid, (int) $this->course->id);
         $this->assertSame('expired', $snapshot->enrolments[0]->effective);
         $this->assertSame('ok', recovery::predict_enrolment($snapshot, $snapshot->enrolments[0], true));
@@ -200,7 +204,7 @@ final class recovery_postcondition_test extends \advanced_testcase {
         $this->assertSame(recovery::EFFECTIVE_ACCESS_RESTORED, $result->overall);
         $this->assertSame('ok', $result->postcondition->courses[(int) $this->course->id]);
         $timeend = (int) $DB->get_field('user_enrolments', 'timeend', ['id' => $this->ueid($userid)]);
-        $this->assertTrue($timeend === 0 || $timeend > time());
+        $this->assertTrue($timeend === 0 || $timeend > $this->clock->time());
     }
 
     /**
@@ -209,7 +213,7 @@ final class recovery_postcondition_test extends \advanced_testcase {
     public function test_not_started_enrolment_is_distinguished(): void {
         global $DB;
         $userid = $this->member();
-        $DB->set_field('user_enrolments', 'timestart', time() + DAYSECS, ['id' => $this->ueid($userid)]);
+        $DB->set_field('user_enrolments', 'timestart', $this->clock->time() + DAYSECS, ['id' => $this->ueid($userid)]);
         $result = recovery::recover($userid, (int) $this->course->id, ['reactivate' => [$this->ueid($userid)]]);
         $this->assertSame(recovery::EFFECTIVE_ACCESS_NOT_RESTORED, $result->overall);
         $this->assertContains(recovery::ENROLMENT_NOT_STARTED, $result->outcomes);
@@ -230,7 +234,7 @@ final class recovery_postcondition_test extends \advanced_testcase {
         $this->assertSame('multiple_instances', $result->blockers[0]->code);
         $this->assertSame(1, \enrol_flexaccess\api::count_multiple_instances());
         $items = array_filter(
-            local\health::check_invariants(time()),
+            local\health::check_invariants($this->clock->time()),
             static fn(\stdClass $item): bool => $item->key === 'invariant_multipleinstances'
         );
         $this->assertCount(1, $items);
@@ -333,7 +337,7 @@ final class recovery_postcondition_test extends \advanced_testcase {
     public function test_recovery_follows_core_rounding_window(): void {
         global $DB;
         // Fixed instants just ahead of the clock: ...49 rounds down, ...51 rounds up.
-        $base = (intdiv(time(), 100) + 1) * 100;
+        $base = (intdiv($this->clock->time(), 100) + 1) * 100;
 
         // Start inside the window: now = base + 49 rounds to base, start = now.
         $now = $base + 49;

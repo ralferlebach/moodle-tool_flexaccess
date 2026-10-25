@@ -11,7 +11,7 @@ genau **eine** bekannte Kombination testen – nicht vier bewegliche Branch-Stä
 | `.github/scripts/flexaccess_family.py` (gleich) | Auflösen, Prüfen, Laden der gepinnten Commits; keine Fallbacks |
 | `.github/scripts/test_flexaccess_family.py` (gleich) | Selbsttests mit lokalen Test-Repositories (Negativfälle) |
 | `.github/scripts/record_environment.php` | Schreibt die getestete Kombination (SHAs, Moodle/PHP/DB) in die Job-Zusammenfassung; bricht ab, wenn installierte Versionen vom Lock abweichen |
-| `.github/flexaccess-family.lock.json` (nur tool_flexaccess, vom Release-Verantwortlichen committet) | Release-Lock: auth/enrol/mod per Commit-SHA, tool_flexaccess als `SELF`, tool_mergeusers per SHA, optional SHA-256 der Release-ZIPs |
+| `.github/flexaccess-family.lock.json` (nur tool_flexaccess, versioniert, ab 2026102400 im Release enthalten) | Release-Lock: auth/enrol/mod per Commit-SHA **oder per Inhalt** (`content`, siehe unten), tool_flexaccess als `SELF` (Inhalt ohne die Lock-Datei), tool_mergeusers per SHA, optional SHA-256 der Release-ZIPs |
 | `.github/workflows/family-release.yml` (tool_flexaccess) | Release-Gate: PHPUnit aller vier Plugins (4.5, 5.0, 5.2, 5.3 × PostgreSQL/MariaDB) und Zwei-Site-LTI (4.5, 5.3; Provider/Consumer) gegen genau den Lock |
 
 ## Was jede CI-Pipeline tut
@@ -26,7 +26,36 @@ genau **eine** bekannte Kombination testen – nicht vier bewegliche Branch-Stä
    gegen den Lock und protokollieren Moodle-, PHP- und Datenbankversion samt SHA-Matrix.
 3. Der Lock wird als Artefakt `flexaccess-family-lock` abgelegt.
 
+## Inhalts-Lock (Auslieferung als Archiv, ab 2026102400)
+
+Die vier Plugins werden als ZIP ausgeliefert und von Hand hochgeladen; die Commit-SHAs eines Release
+entstehen also erst beim Hochladen. Der mitgelieferte Lock pinnt auth, enrol und mod deshalb über ihren
+**Inhalt**: SHA-256 über die sortierten Paare (Pfad, Git-Blob-SHA) aller versionierten Dateien. Der Wert
+hängt nicht von Commit-Metadaten oder Dateirechten ab (Web-Uploads verlieren das Ausführungsrecht), ändert
+sich aber mit jeder hinzugefügten, fehlenden oder geänderten Datei. tool_flexaccess pinnt seinen eigenen
+Inhalt ohne die Lock-Datei.
+
+Das Gate (`lock`) akzeptiert für jedes Geschwister nur den **Kopf** seines Branches (`ref`, Standard
+`development`), wenn er genau diesen Inhalt trägt, und hält dessen Commit-SHA im Evidenz-Artefakt fest.
+Trägt der Kopf anderen Inhalt (Datei vergessen, alte Datei nicht gelöscht, später weiterentwickelt),
+schlägt es fehl. Ein noch nicht hochgeladenes Geschwister wartet es bis zu 30 Minuten ab.
+
+Erzeugt wird der Lock aus den vier fertig committeten Release-Bäumen:
+
+```bash
+python3 .github/scripts/flexaccess_family.py pin-local --parent /pfad/mit/den/vier/repositories > lock.json
+python3 .github/scripts/flexaccess_family.py digest --dir ../moodle-auth_flexaccess        # Inhalt eines Repos
+python3 .github/scripts/flexaccess_family.py digest --dir . --without-lock                  # tool ohne Lock
+```
+
+Hochladen: auth, enrol und mod **vollständig** (alle Dateien des ZIPs; im Repository vorhandene, im ZIP
+fehlende Dateien löschen), danach tool_flexaccess. Der Push der Lock-Datei startet das Gate.
+
 ## Freigabe (Release)
+
+Mit Inhalts-Lock (Archivauslieferung, Regelfall): siehe oben; danach weiter mit Schritt 4.
+
+Mit Commit-Lock (Stände liegen schon auf GitHub):
 
 1. auth, enrol und mod in der neuen Familienversion hochladen.
 2. `FlexAccess family release gate` mit Modus **propose** starten (oder lokal
@@ -39,6 +68,20 @@ genau **eine** bekannte Kombination testen – nicht vier bewegliche Branch-Stä
 
 Das Evidenz-Artefakt `flexaccess-family-evidence-*` enthält den aufgelösten Lock, die SHA-256 der
 Release-ZIPs (`git archive`, beachtet `export-ignore`) und die Berichte der LTI-Läufe.
+
+### Testgrenzen, die in jede Freigabe gehören
+
+Eine Freigabe für produktive externe Identitätsanbieter oder LTI-Plattformen nennt ausdrücklich, was die
+Pipeline **nicht** belegt (Stand 2026102500):
+
+- OAuth 2: Ende-zu-Ende nur gegen einen lokalen Test-Anbieter (Node, http, Endpunkte direkt in der Datenbank);
+  kein produktiver Identitätsanbieter. LDAP, CAS, Shibboleth, SAML2, DB und MNet: nur die Bindung über den
+  Benutzernamen, kein echter Dienst.
+- LTI 1.3: zwei Moodle-Instanzen mit eigener Test-CA, nur PostgreSQL, keine Fremdplattform.
+- Browser: die Plugin-Suiten nur mit Chromium; im Gate läuft die LTI-Consumer-Seite zusätzlich mit Firefox,
+  WebKit nie. Playwright nur auf 4.5 und 5.3, nicht auf 5.0/5.2.
+- Gleichzeitige Abgleiche desselben Kontenpaars: über eine Sperre serialisiert, in einem PHP-Prozess nicht
+  testbar.
 
 ## Lokal reproduzieren
 

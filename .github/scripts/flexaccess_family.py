@@ -26,11 +26,24 @@ Commands
   resolve  Resolve the siblings of the plugin under test from a branch and write the lock.
            --wait SECONDS keeps polling while a sibling still carries another version (the four
            repositories can only be uploaded one after another); after the wait it fails.
-  lock     Validate a versioned release lock (release/flexaccess-family.lock.json) and complete it
-           with the commit of the plugin under test ("SELF").
+  lock     Validate the versioned release lock (.github/flexaccess-family.lock.json) and complete it
+           with the commit of the plugin under test ("SELF"). A sibling pinned by content (see below)
+           is resolved to the commit on its branch that carries exactly that content.
   fetch    Fetch exactly the commits of a lock into a directory (moodle-plugin-ci extra plugins,
            a Moodle tree, or one directory per repository) and verify each fetched version.php.
   pin      Print a lock for the current heads of a branch (to commit as the release lock).
+  pin-local
+           Print a content-pinned release lock for four local repositories (the delivered release
+           trees). It needs no commit SHA of the remote: the commit is found by its content.
+  digest   Print the content digest of a commit of a local repository.
+
+Content pins
+  The four plugins are delivered as archives and uploaded to GitHub by hand, so the commit SHAs of a
+  release only exist after the upload. A release lock can therefore pin a sibling by "content": the
+  SHA-256 over the sorted (path, git blob SHA) pairs of every tracked file of the commit. It is
+  independent of commit metadata and file modes, but changes with any added, removed or modified
+  file. The gate accepts only the head of the sibling's branch with exactly that content.
+  tool_flexaccess, which contains the lock, pins its own content without the lock file.
   zipcheck Build the distributed ZIP (git archive, honours export-ignore) of every pinned commit and
            compare it with the checksums of the lock, if the lock carries any.
 
@@ -51,6 +64,9 @@ import time
 
 COMPONENTS = ['auth_flexaccess', 'enrol_flexaccess', 'mod_flexaccess', 'tool_flexaccess']
 SHA_RE = re.compile(r'^[0-9a-f]{40}$')
+DIGEST_RE = re.compile(r'^[0-9a-f]{64}$')
+LOCK_PATH = '.github/flexaccess-family.lock.json'
+HISTORY_DEPTH = 200
 VERSION_RE = re.compile(r"\$plugin->version\s*=\s*([0-9]{10})\s*;")
 COMPONENT_RE = re.compile(r"\$plugin->component\s*=\s*'([a-z0-9_]+)'\s*;")
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -129,6 +145,40 @@ def remote_version(repo, sha):
         return plugin_facts(git('show', 'FETCH_HEAD:version.php', cwd=tmp))
 
 
+def content_digest(cwd, commit='HEAD', exclude=()):
+    """SHA-256 over the sorted "path NUL blob-SHA" lines of every tracked file of a commit."""
+    listing = git('ls-tree', '-r', '-z', '--full-tree', commit, cwd=cwd)
+    pairs = []
+    for record in listing.split('\0'):
+        if not record:
+            continue
+        meta, path = record.split('\t', 1)
+        _mode, kind, blob = meta.split()
+        if kind != 'blob' or path in exclude:
+            continue
+        pairs.append('%s\0%s\n' % (path, blob))
+    return hashlib.sha256(''.join(sorted(pairs)).encode('utf-8')).hexdigest()
+
+
+def find_content_commit(repo, ref, content, depth=HISTORY_DEPTH):
+    """The head of a branch, provided it carries exactly the locked content (no drift, no leftovers)."""
+    head = branch_sha(repo, ref)
+    with tempfile.TemporaryDirectory() as tmp:
+        git('init', '-q', cwd=tmp)
+        git('fetch', '-q', '--depth', str(depth), repo_url(repo), 'refs/heads/%s:refs/remotes/lock/%s' % (ref, ref),
+            cwd=tmp)
+        if content_digest(tmp, head) == content:
+            return head
+        older = [sha for sha in git('rev-list', 'refs/remotes/lock/' + ref, cwd=tmp).split()[1:]
+                 if content_digest(tmp, sha) == content]
+    if older:
+        raise FamilyError('The head of %s@%s no longer carries the locked content (it was at %s); the branch has '
+                          'moved on. Create a new lock for the new state.' % (repo, ref, older[0]))
+    raise FamilyError('The head of %s@%s does not carry the locked content %s. Upload exactly the released '
+                      'repository (all files, nothing left over, deleted files removed), or create a new lock.'
+                      % (repo, ref, content[:16]))
+
+
 def read_version(directory):
     """Version and component of a plugin directory."""
     with open(os.path.join(directory, 'version.php'), encoding='utf-8') as handle:
@@ -150,7 +200,15 @@ def validate_lock(lock, config, allow_self=None):
             raise FamilyError('%s points to %r, expected %r.' % (component, entry.get('repo'),
                                                                   config['plugins'][component]['repo']))
         sha = entry.get('sha')
+        if 'content' in entry and not DIGEST_RE.match(str(entry['content'])):
+            raise FamilyError('%s has an invalid content digest (%r).' % (component, entry['content']))
         if sha == 'SELF' and component == allow_self:
+            continue
+        if sha is None and allow_self and 'content' in entry:
+            # Pinned by content; the lock command resolves the commit.
+            if entry.get('version') != family:
+                raise FamilyError('%s is pinned at version %r, the family is %r.' % (
+                    component, entry.get('version'), family))
             continue
         if not SHA_RE.match(str(sha)):
             raise FamilyError('%s is not pinned to a full commit SHA (%r).' % (component, sha))
@@ -240,11 +298,37 @@ def cmd_lock(args, config):
             args.self_dir, own_version, own_component, lock['family_version']))
     if lock['plugins'][args.self]['sha'] != 'SELF':
         raise FamilyError('The lock must pin %s as "SELF" (the commit that contains the lock).' % args.self)
-    lock['plugins'][args.self] = dict(lock['plugins'][args.self], sha=args.self_sha, version=own_version)
+    own = lock['plugins'][args.self]
+    if 'content' in own:
+        actual = content_digest(args.self_dir, 'HEAD', exclude=(LOCK_PATH,))
+        if actual != own['content']:
+            raise FamilyError('%s: the commit under test carries content %s, the lock pins %s (the release '
+                              'tree differs from the locked one).' % (args.self, actual[:16], own['content'][:16]))
+    lock['plugins'][args.self] = dict(own, sha=args.self_sha, version=own_version)
     for component in COMPONENTS:
         if component == args.self:
             continue
         entry = lock['plugins'][component]
+        if 'content' in entry:
+            ref = entry.get('ref', 'development')
+            if entry.get('sha') is None:
+                deadline = time.time() + max(0, args.wait)
+                while True:
+                    try:
+                        entry['sha'] = find_content_commit(entry['repo'], ref, entry['content'])
+                        break
+                    except FamilyError as error:
+                        # The repositories are uploaded one after another: wait for the sibling.
+                        if time.time() >= deadline:
+                            raise
+                        print('Waiting for %s: %s' % (component, error), flush=True)
+                        time.sleep(args.interval)
+            else:
+                with tempfile.TemporaryDirectory() as tmp:
+                    git('init', '-q', cwd=tmp)
+                    git('fetch', '-q', '--depth', '1', repo_url(entry['repo']), entry['sha'], cwd=tmp)
+                    if content_digest(tmp, 'FETCH_HEAD') != entry['content']:
+                        raise FamilyError('%s@%s does not carry the locked content.' % (entry['repo'], entry['sha']))
         version, declared = remote_version(entry['repo'], entry['sha'])
         if declared != component or version != entry['version']:
             raise FamilyError('%s@%s is %s at version %s, the lock says %s.' % (
@@ -306,12 +390,52 @@ def cmd_pin(args, config):
         versions.add(version)
         lock['plugins'][component] = {'repo': repo, 'sha': 'SELF' if component == 'tool_flexaccess' else sha,
                                       'version': version}
+        if component != 'tool_flexaccess':
+            with tempfile.TemporaryDirectory() as tmp:
+                git('init', '-q', cwd=tmp)
+                git('fetch', '-q', '--depth', '1', repo_url(repo), sha, cwd=tmp)
+                lock['plugins'][component]['content'] = content_digest(tmp, 'FETCH_HEAD')
     if len(versions) != 1:
         raise FamilyError('The heads of %s are not at one version: %s' % (args.ref, sorted(versions)))
     lock['family_version'] = versions.pop()
     merge = config['mergeusers']
     lock['mergeusers'] = {'repo': merge['repo'], 'sha': merge['sha'], 'version': merge.get('version')}
     print(json.dumps(lock, indent=2, sort_keys=True))
+
+
+def cmd_pin_local(args, config):
+    """A content-pinned release lock for four local release repositories (committed HEADs)."""
+    lock = {'schema': 1, 'source': 'content', 'plugins': {}}
+    versions = set()
+    for component in COMPONENTS:
+        repo = config['plugins'][component]['repo']
+        directory = os.path.join(args.parent, repo.split('/')[-1])
+        if git('status', '--porcelain', cwd=directory).strip():
+            raise FamilyError('%s has uncommitted changes; lock only committed release trees.' % directory)
+        version, declared = plugin_facts(git('show', 'HEAD:version.php', cwd=directory))
+        if declared != component:
+            raise FamilyError('%s declares component %r.' % (directory, declared))
+        versions.add(version)
+        entry = {'repo': repo, 'version': version, 'ref': args.ref}
+        if component == 'tool_flexaccess':
+            entry = {'repo': repo, 'version': version, 'sha': 'SELF',
+                     'content': content_digest(directory, 'HEAD', exclude=(LOCK_PATH,))}
+        else:
+            entry['content'] = content_digest(directory, 'HEAD')
+        lock['plugins'][component] = entry
+    if len(versions) != 1:
+        raise FamilyError('The local release trees are not at one version: %s' % sorted(versions))
+    lock['family_version'] = versions.pop()
+    merge = config['mergeusers']
+    lock['mergeusers'] = {'repo': merge['repo'], 'sha': merge['sha'], 'version': merge.get('version')}
+    validate_lock(lock, config, allow_self='tool_flexaccess')
+    print(json.dumps(lock, indent=2, sort_keys=True))
+
+
+def cmd_digest(args, config):
+    """Content digest of a commit of a local repository."""
+    exclude = (LOCK_PATH,) if args.without_lock else ()
+    print(content_digest(args.dir, args.commit, exclude=exclude))
 
 
 def cmd_zipcheck(args, config):
@@ -361,6 +485,8 @@ def main(argv=None):
     p.add_argument('--self', required=True, choices=COMPONENTS)
     p.add_argument('--self-dir', default='plugin')
     p.add_argument('--self-sha', required=True)
+    p.add_argument('--wait', type=int, default=0, help='Seconds to wait for content-pinned siblings')
+    p.add_argument('--interval', type=int, default=30)
     outputs(p)
     for name in ('fetch', 'zipcheck'):
         p = sub.add_parser(name)
@@ -376,14 +502,21 @@ def main(argv=None):
             p.add_argument('--out')
     p = sub.add_parser('pin')
     p.add_argument('--ref', required=True)
+    p = sub.add_parser('pin-local')
+    p.add_argument('--parent', required=True, help='Directory holding the four repositories (moodle-<component>)')
+    p.add_argument('--ref', default='development', help='Branch on which the siblings will be uploaded')
+    p = sub.add_parser('digest')
+    p.add_argument('--dir', required=True)
+    p.add_argument('--commit', default='HEAD')
+    p.add_argument('--without-lock', action='store_true', help='Exclude %s (tool_flexaccess)' % LOCK_PATH)
 
     args = parser.parse_args(argv)
     if getattr(args, 'self_sha', None) is not None and not SHA_RE.match(args.self_sha):
         parser.error('--self-sha must be a full commit SHA')
     try:
         config = load_config(args.config)
-        {'resolve': cmd_resolve, 'lock': cmd_lock, 'fetch': cmd_fetch, 'pin': cmd_pin,
-         'zipcheck': cmd_zipcheck}[args.command](args, config)
+        {'resolve': cmd_resolve, 'lock': cmd_lock, 'fetch': cmd_fetch, 'pin': cmd_pin, 'pin-local': cmd_pin_local,
+         'digest': cmd_digest, 'zipcheck': cmd_zipcheck}[args.command](args, config)
     except FamilyError as error:
         print('::error::FlexAccess plugin family: %s' % error, file=sys.stderr)
         return 1

@@ -486,7 +486,7 @@ final class batch {
         string $cardtext = ''
     ): array {
         global $DB, $USER;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $count = max(1, min(self::MAX_SYNC_CREATE, $count));
         $prefix = self::sanitise_prefix($usernameprefix);
         $async = $count > self::SYNC_THRESHOLD;
@@ -554,7 +554,7 @@ final class batch {
         ?int $now = null
     ): array {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $batch = self::get($batchid);
         if (!$batch) {
             throw new \moodle_exception('invalidrecord', 'error');

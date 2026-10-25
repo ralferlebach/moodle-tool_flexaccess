@@ -91,7 +91,7 @@ require_sesskey();
 // Fresh passwords for a consistent credential set across every generated file. Members that have
 // been personalised/converted are skipped by reset_credentials() and keep their password.
 $credentials = batch::reset_credentials($id);
-$DB->set_field('tool_flexaccess_batch', 'timeissued', time(), ['id' => $id]);
+$DB->set_field('tool_flexaccess_batch', 'timeissued', \core\di::get(\core\clock::class)->time(), ['id' => $id]);
 $courseurl = (new moodle_url('/course/view.php', ['id' => $batch->courseid]))->out(false);
 $base = clean_filename(format_string($batch->name)) ?: ('batch' . $id);
 

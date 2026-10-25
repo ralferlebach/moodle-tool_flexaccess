@@ -28,6 +28,9 @@ use tool_flexaccess\local\health;
  * @covers \tool_flexaccess\event\health_repaired
  */
 final class health_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /**
      * Skip without both siblings.
      *
@@ -35,6 +38,7 @@ final class health_test extends \advanced_testcase {
      */
     protected function setUp(): void {
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         if (!method_exists('\enrol_flexaccess\api', 'role_model_problems')) {
             $this->markTestSkipped('Requires auth_flexaccess and enrol_flexaccess 1.1.0+.');
         }
@@ -93,8 +97,8 @@ final class health_test extends \advanced_testcase {
         $this->assertSame(health::REPAIR_ROLES, $role->repair);
 
         // A temporary account without restriction is a critical invariant violation.
-        $userid = \auth_flexaccess\api::create_temporary_user(time() + 3600);
-        $item = $this->item(health::check_invariants(time()), 'invariant_temporary_unrestricted');
+        $userid = \auth_flexaccess\api::create_temporary_user($this->clock->time() + 3600);
+        $item = $this->item(health::check_invariants($this->clock->time()), 'invariant_temporary_unrestricted');
         $this->assertSame(health::ERROR, $item->status);
         $this->assertSame(health::REPAIR_RECONCILE, $item->repair);
 
@@ -102,15 +106,15 @@ final class health_test extends \advanced_testcase {
         $task = \core\task\manager::get_scheduled_task('\auth_flexaccess\task\expire_accounts');
         $task->set_disabled(true);
         \core\task\manager::configure_scheduled_task($task);
-        $taskitem = $this->item(health::check_tasks(time()), 'task_auth_flexaccess\task\expire_accounts');
+        $taskitem = $this->item(health::check_tasks($this->clock->time()), 'task_auth_flexaccess\task\expire_accounts');
         $this->assertSame(health::ERROR, $taskitem->status);
 
         // Mail funnel: failed set-password mails are prioritised as errors.
         $DB->insert_record('auth_flexaccess_mailqueue', (object) [
             'userid' => $userid, 'recipient' => 'x@example.com', 'mailtype' => 'set_password', 'payloadjson' => '{}',
-            'status' => 'failed', 'attempts' => 5, 'timecreated' => time(), 'nextrun' => time(),
+            'status' => 'failed', 'attempts' => 5, 'timecreated' => $this->clock->time(), 'nextrun' => $this->clock->time(),
         ]);
-        $this->assertSame(health::ERROR, $this->item(health::check_mail(time()), 'mail_funnel')->status);
+        $this->assertSame(health::ERROR, $this->item(health::check_mail($this->clock->time()), 'mail_funnel')->status);
         $this->assertSame(health::ERROR, health::overall(health::run()));
     }
 
@@ -123,7 +127,7 @@ final class health_test extends \advanced_testcase {
         global $DB;
         set_config('enrol_plugins_enabled', 'manual,flexaccess');
         $course = $this->getDataGenerator()->create_course();
-        $temporary = \auth_flexaccess\api::create_temporary_user(time() + 3600);
+        $temporary = \auth_flexaccess\api::create_temporary_user($this->clock->time() + 3600);
         \enrol_flexaccess\local\enrol_service::admin_enrol((int) $course->id, $temporary, false);
         $enrolments = $DB->get_records('user_enrolments', ['userid' => $temporary]);
 
@@ -152,7 +156,7 @@ final class health_test extends \advanced_testcase {
         set_config('enrol_plugins_enabled', 'manual,flexaccess');
         $course = $this->getDataGenerator()->create_course(['fullname' => 'Conflict course']);
         $enrolid = \enrol_flexaccess\local\enrol_service::ensure_instance((int) $course->id);
-        $DB->set_field('enrol_flexaccess_instance', 'allowtemporary', 1, ['enrolid' => $enrolid]);
+        \enrol_flexaccess\local\instance_config::save($enrolid, ['allowtemporary' => 1]);
         set_config('allowtemporary', 0, 'enrol_flexaccess');
         $item = $this->item(health::check_policies(), 'policy_' . $enrolid . '_allowtemporary');
         $this->assertNotNull($item);

@@ -57,7 +57,7 @@ if ($form->is_cancelled()) {
 
     $rows = batch_import::parse($path);
     // Small imports run inline; large ones are handed to an ad-hoc task so the request returns.
-    $result = batch_import::convert_dispatch($id, $rows, $data->usernamerule, time());
+    $result = batch_import::convert_dispatch($id, $rows, $data->usernamerule, \core\di::get(\core\clock::class)->time());
 
     echo $OUTPUT->header();
     echo $OUTPUT->heading(get_string('batchconvert', 'tool_flexaccess'));

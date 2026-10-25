@@ -32,6 +32,9 @@ use tool_flexaccess\local\reconciliation;
  * @covers \tool_flexaccess\task\reconcile_accounts
  */
 final class reconciliation_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /** @var \stdClass Course. */
     private $course;
     /** @var \stdClass FlexAccess instance. */
@@ -45,6 +48,7 @@ final class reconciliation_test extends \advanced_testcase {
     protected function setUp(): void {
         global $DB;
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         $this->resetAfterTest();
         set_config('enrol_plugins_enabled', 'manual,flexaccess');
         participant_role::ensure();
@@ -82,9 +86,9 @@ final class reconciliation_test extends \advanced_testcase {
             'accountstate' => $state,
             'referencecode' => account_service::generate_unique_reference(),
             'sourcecourseid' => $sourcecourseid,
-            'timecreated' => time(),
+            'timecreated' => $this->clock->time(),
             'timeexpires' => $expires,
-            'timemodified' => time(),
+            'timemodified' => $this->clock->time(),
             'lockedby' => $lockedby,
         ]);
         if ($restricted) {
@@ -107,7 +111,7 @@ final class reconciliation_test extends \advanced_testcase {
             $instance ?? $this->instance,
             $userid,
             participant_role::get_id(),
-            time(),
+            $this->clock->time(),
             $timeend,
             $status
         );
@@ -188,7 +192,8 @@ final class reconciliation_test extends \advanced_testcase {
      * @return void
      */
     public function test_live_temporary_gets_restriction(): void {
-        $userid = $this->legacy(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 0, false, null, time() + 3600);
+        $expires = $this->clock->time() + 3600;
+        $userid = $this->legacy(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 0, false, null, $expires);
         $this->enrol($userid);
         $result = reconciliation::reconcile_user($userid, reconciliation::MODE_REPAIR, 'test');
         $this->assertSame([reconciliation::RULE_RESTRICT], $result->repairs);
@@ -202,7 +207,8 @@ final class reconciliation_test extends \advanced_testcase {
      */
     public function test_expired_is_not_reactivated(): void {
         global $DB;
-        $userid = $this->legacy(account_type::TEMPORARY_USER, account_state::EXPIRED, 1, true, 'flexaccess', time() - 10);
+        $expired = $this->clock->time() - 10;
+        $userid = $this->legacy(account_type::TEMPORARY_USER, account_state::EXPIRED, 1, true, 'flexaccess', $expired);
         $result = reconciliation::reconcile_user($userid, reconciliation::MODE_REPAIR, 'test');
         $this->assertSame([], $result->repairs);
         $this->assertEquals(1, $DB->get_field('user', 'suspended', ['id' => $userid]));
@@ -236,7 +242,7 @@ final class reconciliation_test extends \advanced_testcase {
             0,
             true,
             null,
-            time() + 3600,
+            $this->clock->time() + 3600,
             (int) $this->course->id
         );
         $result = reconciliation::reconcile_user($userid, reconciliation::MODE_REPAIR, 'test');
@@ -269,8 +275,8 @@ final class reconciliation_test extends \advanced_testcase {
         global $DB;
         $userid = $this->legacy(account_type::AUTHENTICATED_USER, account_state::ACTIVE, 0, false);
         $second = $DB->get_record('enrol', ['id' => enrol_get_plugin('flexaccess')->add_instance($this->course)]);
-        $this->enrol($userid, ENROL_USER_ACTIVE, time() + 100);
-        $this->enrol($userid, ENROL_USER_ACTIVE, time() + 99999, $second);
+        $this->enrol($userid, ENROL_USER_ACTIVE, $this->clock->time() + 100);
+        $this->enrol($userid, ENROL_USER_ACTIVE, $this->clock->time() + 99999, $second);
         $before = $DB->get_records('user_enrolments', ['userid' => $userid], 'id', 'id, status, timeend');
         $result = reconciliation::reconcile_user($userid, reconciliation::MODE_REPAIR, 'test');
         $this->assertContains(reconciliation::REVIEW_COMPETING_ENROLMENTS, $result->reviews);
@@ -301,7 +307,7 @@ final class reconciliation_test extends \advanced_testcase {
         global $DB;
         $fix = $this->legacy(account_type::AUTHENTICATED_USER, account_state::ACTIVE, 0, true);
         $review = $this->legacy(account_type::AUTHENTICATED_USER, account_state::ACTIVE, 1, false, null);
-        $overdue = $this->legacy(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 0, true, null, time() - 5);
+        $overdue = $this->legacy(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 0, true, null, $this->clock->time() - 5);
         // Historical system-level participant assignment.
         role_assign(participant_role::get_id(), $fix, \context_system::instance()->id);
 
@@ -314,7 +320,7 @@ final class reconciliation_test extends \advanced_testcase {
         $this->assertSame(0, \enrol_flexaccess\api::find_role_mismatches(1)['systemparticipant']);
         $this->assertSame([reconciliation::REVIEW_ADMIN_SUSPENSION => 1], reconciliation::open_case_counts());
         // Nothing automatically repairable is left.
-        $this->assertSame(0, local\health::auto_repairable_count(time()));
+        $this->assertSame(0, local\health::auto_repairable_count($this->clock->time()));
         // Every change has an audit row with source and rule.
         $this->assertTrue($DB->record_exists('tool_flexaccess_reconcile_log', [
             'userid' => $fix, 'rule' => reconciliation::RULE_UNRESTRICT, 'source' => 'upgrade',
@@ -351,7 +357,7 @@ final class reconciliation_test extends \advanced_testcase {
         $second = $this->legacy(account_type::AUTHENTICATED_USER, account_state::ACTIVE, 0, true);
         // Simulate a run that stopped after the first account.
         set_config('reconcile_state', json_encode((object) [
-            'status' => 'running', 'source' => 'upgrade', 'cursor' => $first, 'started' => time(), 'finished' => 0,
+            'status' => 'running', 'source' => 'upgrade', 'cursor' => $first, 'started' => $this->clock->time(), 'finished' => 0,
             'lastfullscan' => 0, 'checked' => 1, 'repairedaccounts' => 0, 'rolefixes' => 0, 'corefixes' => 0, 'total' => 2,
         ]), 'tool_flexaccess');
         $this->expectOutputRegex('/2 accounts checked, status done/');
@@ -371,10 +377,10 @@ final class reconciliation_test extends \advanced_testcase {
      */
     public function test_status_section(): void {
         $this->legacy(account_type::AUTHENTICATED_USER, account_state::ACTIVE, 1, false, null);
-        $items = local\health::check_reconciliation(time());
+        $items = local\health::check_reconciliation($this->clock->time());
         $this->assertSame('reconcile_never', $items[0]->key);
         local\health::repair(local\health::REPAIR_RECONCILE);
-        $keys = array_map(static fn($i) => $i->key, local\health::check_reconciliation(time()));
+        $keys = array_map(static fn($i) => $i->key, local\health::check_reconciliation($this->clock->time()));
         $this->assertContains('reconcile_lastscan', $keys);
         $this->assertContains('reconcile_case_' . reconciliation::REVIEW_ADMIN_SUSPENSION, $keys);
     }
@@ -386,7 +392,7 @@ final class reconciliation_test extends \advanced_testcase {
      */
     public function test_deleted_user_is_classified_not_skipped(): void {
         global $DB;
-        $userid = \auth_flexaccess\api::create_temporary_user(time() + 3600);
+        $userid = \auth_flexaccess\api::create_temporary_user($this->clock->time() + 3600);
         // Simulate legacy data: the user was deleted before the metadata was removed on deletion.
         $DB->set_field('user', 'deleted', 1, ['id' => $userid]);
         $this->assertContains($userid, \auth_flexaccess\api::list_account_userids(0, 1000));
@@ -403,7 +409,7 @@ final class reconciliation_test extends \advanced_testcase {
             'userid' => $userid, 'rule' => reconciliation::RULE_PURGE_DELETED,
         ]));
         // A live account is never purged by this rule.
-        $live = \auth_flexaccess\api::create_temporary_user(time() + 3600);
+        $live = \auth_flexaccess\api::create_temporary_user($this->clock->time() + 3600);
         $this->assertFalse(\auth_flexaccess\api::purge_deleted_user_account($live));
         // Deleting a user through Moodle removes the metadata right away.
         delete_user($DB->get_record('user', ['id' => $live]));
@@ -420,7 +426,7 @@ final class reconciliation_test extends \advanced_testcase {
         // More inconsistencies than the default list limit (500) of find_state_mismatches().
         $total = 510;
         for ($i = 0; $i < $total; $i++) {
-            \auth_flexaccess\api::create_temporary_user(time() + 3600); // Unrestricted: one mismatch each.
+            \auth_flexaccess\api::create_temporary_user($this->clock->time() + 3600); // Unrestricted: one mismatch each.
         }
         $orphan = (int) $this->getDataGenerator()->create_user()->id;
         role_assign(\enrol_flexaccess\local\participant_role::get_restriction_id(), $orphan, \context_system::instance()->id);
@@ -434,7 +440,7 @@ final class reconciliation_test extends \advanced_testcase {
         // An open orphan case is not resolved while the orphan still exists.
         $DB->insert_record('tool_flexaccess_reconcile', (object) [
             'userid' => $orphan, 'code' => reconciliation::REVIEW_ORPHAN_RESTRICTION, 'status' => 'open',
-            'timecreated' => time(), 'timemodified' => time(),
+            'timecreated' => $this->clock->time(), 'timemodified' => $this->clock->time(),
         ]);
         set_config('reconcile_state', '', 'tool_flexaccess');
         reconciliation::run(reconciliation::MODE_REPAIR, reconciliation::SOURCE_TASK);
@@ -450,7 +456,7 @@ final class reconciliation_test extends \advanced_testcase {
      */
     public function test_unknown_lock_origin_becomes_review_case(): void {
         global $DB;
-        $userid = \auth_flexaccess\api::create_temporary_user(time() + 3600);
+        $userid = \auth_flexaccess\api::create_temporary_user($this->clock->time() + 3600);
         $DB->set_field('auth_flexaccess_account', 'accountstate', account_state::EXPIRED, ['userid' => $userid]);
         $DB->set_field('user', 'suspended', 1, ['id' => $userid]);
         $DB->set_field('auth_flexaccess_account', 'lockedby', null, ['userid' => $userid]);

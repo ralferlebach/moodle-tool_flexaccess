@@ -28,11 +28,15 @@ use tool_flexaccess\local\batch_import;
  * @covers \tool_flexaccess\local\batch_import
  */
 final class batch_convert_async_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /**
      * Both halves of FlexAccess are enabled on any site that provisions access lists.
      */
     protected function setUp(): void {
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         set_config('enrol_plugins_enabled', 'manual,flexaccess');
     }
 
@@ -50,7 +54,7 @@ final class batch_convert_async_test extends \advanced_testcase {
         // task properly (and complete it), so the members exist and it does not sit in the queue
         // ahead of the conversion task this test is about.
         if (($result['status'] ?? '') === batch::STATUS_QUEUED) {
-            $provision = \core\task\manager::get_next_adhoc_task(time());
+            $provision = \core\task\manager::get_next_adhoc_task($this->clock->time());
             $provision->execute();
             \core\task\manager::adhoc_task_complete($provision);
         }
@@ -100,7 +104,7 @@ final class batch_convert_async_test extends \advanced_testcase {
         $this->assertSame(0, $result['converted']);
         $this->assertSame(batch::STATUS_CONVERTING, batch::get($batchid)->status);
 
-        $task = \core\task\manager::get_next_adhoc_task(time());
+        $task = \core\task\manager::get_next_adhoc_task($this->clock->time());
         $this->assertInstanceOf(\tool_flexaccess\task\convert_batch::class, $task);
         $task->execute();
         \core\task\manager::adhoc_task_complete($task);

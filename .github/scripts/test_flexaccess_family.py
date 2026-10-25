@@ -17,7 +17,8 @@
 
 Every negative case must fail hard: a missing branch, unequal versions, a missing or short SHA, an
 unpinned tool_mergeusers, a tampered lock (wrong repository, wrong version, unknown commit, extra or
-missing plugin) and a release ZIP checksum mismatch. Run: python3 test_flexaccess_family.py
+missing plugin), a release ZIP checksum mismatch and - for content-pinned locks - a sibling head or a
+tool_flexaccess commit whose files differ from the locked release tree. Run: python3 test_flexaccess_family.py
 """
 
 import io
@@ -229,7 +230,98 @@ class FamilyTest(unittest.TestCase):
         code, _, err = self.cli('lock', '--lock-file', self.write_release_lock(data), '--self', 'tool_flexaccess',
                                 '--self-dir', self.self_dir, '--self-sha', 'b' * 40)
         self.assertEqual(1, code)
+        self.assertIn('does not carry the locked content', err)
+        del data['plugins']['mod_flexaccess']['content']
+        code, _, err = self.cli('lock', '--lock-file', self.write_release_lock(data), '--self', 'tool_flexaccess',
+                                '--self-dir', self.self_dir, '--self-sha', 'b' * 40)
+        self.assertEqual(1, code)
         self.assertIn('the lock says', err)
+
+    def content_lock(self):
+        """A content-pinned release lock of the fixture repositories (pin-local), as a dict."""
+        code, out, err = self.cli('pin-local', '--parent', os.path.join(self.root, 'owner'))
+        self.assertEqual(0, code, err)
+        return json.loads(out)
+
+    def verify_content_lock(self, data, self_dir=None):
+        """Run the gate's lock command on a content lock; returns (code, completed lock or None, stderr)."""
+        out = os.path.join(self.tmp, 'completed.json')
+        if os.path.exists(out):
+            os.remove(out)
+        code, _, err = self.cli('lock', '--lock-file', self.write_release_lock(data), '--self', 'tool_flexaccess',
+                                '--self-dir', self_dir or os.path.join(self.root, 'owner/moodle-tool_flexaccess'),
+                                '--self-sha', 'c' * 40, '--out', out)
+        return code, (load(out) if code == 0 else None), err
+
+    def reupload(self, component, extra=None, mode=None):
+        """Simulate a manual upload: an unrelated commit, then a commit restoring the released files."""
+        path = os.path.join(self.root, 'owner/moodle-' + component)
+        with open(os.path.join(path, 'scratch.txt'), 'w', encoding='utf-8') as handle:
+            handle.write('in between\n')
+        run('add', '-A', cwd=path)
+        run('commit', '-q', '-m', 'in between', cwd=path)
+        os.remove(os.path.join(path, 'scratch.txt'))
+        if extra:
+            with open(os.path.join(path, extra), 'w', encoding='utf-8') as handle:
+                handle.write('left over\n')
+        if mode:
+            os.chmod(os.path.join(path, 'version.php'), mode)
+        run('add', '-A', cwd=path)
+        run('commit', '-q', '-m', 'upload by someone else', cwd=path)
+        return subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=path, check=True, capture_output=True,
+                              text=True).stdout.strip()
+
+    def test_content_lock_resolves_the_uploaded_commit(self):
+        data = self.content_lock()
+        self.assertEqual('SELF', data['plugins']['tool_flexaccess']['sha'])
+        self.assertNotIn('sha', data['plugins']['auth_flexaccess'])
+        uploaded = self.reupload('auth_flexaccess', mode=0o755)
+        code, completed, err = self.verify_content_lock(data)
+        self.assertEqual(0, code, err)
+        self.assertEqual(uploaded, completed['plugins']['auth_flexaccess']['sha'], 'File modes do not matter.')
+        self.assertEqual(self.heads['enrol_flexaccess'], completed['plugins']['enrol_flexaccess']['sha'])
+        self.assertEqual('c' * 40, completed['plugins']['tool_flexaccess']['sha'])
+        (code, _, err), dest = self.fetch(completed)
+        self.assertEqual(0, code, err)
+
+    def test_content_drift_fails(self):
+        data = self.content_lock()
+        self.reupload('enrol_flexaccess', extra='stale.php')
+        code, _, err = self.verify_content_lock(data)
+        self.assertEqual(1, code)
+        self.assertIn('no longer carries the locked content', err)
+
+    def test_unknown_content_fails(self):
+        data = self.content_lock()
+        data['plugins']['mod_flexaccess']['content'] = 'e' * 64
+        code, _, err = self.verify_content_lock(data)
+        self.assertEqual(1, code)
+        self.assertIn('does not carry the locked content', err)
+
+    def test_self_content_is_checked_without_the_lock_file(self):
+        data = self.content_lock()
+        tool = os.path.join(self.root, 'owner/moodle-tool_flexaccess')
+        os.makedirs(os.path.join(tool, '.github'))
+        with open(os.path.join(tool, family.LOCK_PATH), 'w', encoding='utf-8') as handle:
+            json.dump(data, handle)
+        run('add', '-A', cwd=tool)
+        run('commit', '-q', '-m', 'add the lock', cwd=tool)
+        code, _, err = self.verify_content_lock(data)
+        self.assertEqual(0, code, 'Committing the lock does not change the locked tool content: ' + err)
+        with open(os.path.join(tool, 'extra.php'), 'w', encoding='utf-8') as handle:
+            handle.write('<?php\n')
+        run('add', '-A', cwd=tool)
+        run('commit', '-q', '-m', 'drift', cwd=tool)
+        code, _, err = self.verify_content_lock(data)
+        self.assertEqual(1, code)
+        self.assertIn('differs from the locked one', err)
+
+    def test_invalid_content_digest_fails(self):
+        data = self.content_lock()
+        data['plugins']['mod_flexaccess']['content'] = 'abc'
+        code, _, err = self.verify_content_lock(data)
+        self.assertEqual(1, code)
+        self.assertIn('invalid content digest', err)
 
     def test_release_lock_must_name_self(self):
         data = self.release_lock()

@@ -132,7 +132,7 @@ final class invitation {
         ?int $now = null
     ): int {
         global $DB, $USER;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         return (int) $DB->insert_record(self::TABLE, (object) [
             'courseid' => $courseid,
             'campaignid' => $campaignid,
@@ -201,7 +201,7 @@ final class invitation {
      * @return bool
      */
     public static function is_acceptable(\stdClass $invite, ?int $now = null): bool {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         if ($invite->status !== self::STATUS_PENDING) {
             return false;
         }
@@ -217,7 +217,7 @@ final class invitation {
      */
     public static function send(int $id, ?int $now = null): bool {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $invite = self::get($id);
         if (!$invite || $invite->status !== self::STATUS_PENDING) {
             return false;
@@ -236,7 +236,7 @@ final class invitation {
      */
     public static function remind(int $id, ?int $now = null): bool {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $invite = self::get($id);
         if (!$invite || $invite->status !== self::STATUS_PENDING || (int) $invite->timesent === 0) {
             return false;
@@ -282,7 +282,7 @@ final class invitation {
      */
     public static function reserve(string $token, ?int $now = null): ?\stdClass {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $invite = self::get_by_token($token);
         if (!$invite) {
             return null;
@@ -323,7 +323,7 @@ final class invitation {
      */
     public static function commit_acceptance(int $id, ?int $now = null): void {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $invite = self::get($id);
         if ($invite && $invite->status === self::STATUS_RESERVED) {
             $DB->set_field(self::TABLE, 'status', self::STATUS_ACCEPTED, ['id' => $id]);
@@ -354,7 +354,7 @@ final class invitation {
      * @return \stdClass|null The accepted invitation, or null.
      */
     public static function accept(string $token, ?int $now = null): ?\stdClass {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $reserved = self::reserve($token, $now);
         if ($reserved === null) {
             return null;
@@ -367,7 +367,8 @@ final class invitation {
 
     /**
      * Ids of invitations due for an automatic reminder: pending, already sent before the cutoff,
-     * not yet reminded, and not expired.
+     * not yet reminded, and not expired (an invitation is acceptable up to and including its expiry
+     * second, see {@see self::is_acceptable()}; the selection uses the same boundary).
      *
      * @param int $sentcutoff Only invitations sent at or before this time.
      * @param int $now Current time.
@@ -377,9 +378,10 @@ final class invitation {
     public static function due_reminders(int $sentcutoff, int $now, int $limit = 0): array {
         global $DB;
         $select = "status = :status AND timesent > 0 AND timesent <= :cutoff AND remindercount = 0 "
-            . "AND (timeexpires = 0 OR timeexpires > :now)";
+            . "AND (timeexpires = 0 OR timeexpires >= :now)";
         $params = ['status' => self::STATUS_PENDING, 'cutoff' => $sentcutoff, 'now' => $now];
-        return array_map('intval', $DB->get_fieldset_select(self::TABLE, 'id', $select, $params, 0, $limit));
+        // Moodle's get_fieldset_select() takes no limit; get_records_select() does.
+        return array_map('intval', array_keys($DB->get_records_select(self::TABLE, $select, $params, 'id ASC', 'id', 0, $limit)));
     }
 
     /**

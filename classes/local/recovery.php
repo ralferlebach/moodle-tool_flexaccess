@@ -112,7 +112,7 @@ final class recovery {
      * @return \stdClass|null Null when the user has no FlexAccess account.
      */
     public static function snapshot(int $userid, ?int $courseid = null, ?int $now = null): ?\stdClass {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $accounts = \auth_flexaccess\api::get_accounts([$userid]);
         if (!isset($accounts[$userid])) {
             return null;
@@ -129,7 +129,7 @@ final class recovery {
      * @return array<int, \stdClass> Keyed by user id; users without FlexAccess account are omitted.
      */
     public static function snapshots(array $userids, ?int $courseid = null, ?int $now = null): array {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $accounts = \auth_flexaccess\api::get_accounts($userids);
         if (!$accounts) {
             return [];
@@ -173,13 +173,15 @@ final class recovery {
     /**
      * Predict what an account recovery would do, without changing anything (for the preview).
      *
+     * The prediction reads only the snapshot, which was taken at one reference time (->asof); it never
+     * reads the clock again, so a preview and the recovery that follows judge the same moment.
+     *
      * @param \stdClass $snapshot Snapshot.
-     * @param int|null $now Current time.
+     * @param int|null $now Unused; kept for compatibility (the snapshot's ->asof is the reference time).
      * @return string Action code: temporaryrevived, verificationresent, normalised, setpassword, none,
      *     noteligible, foreignlock.
      */
     public static function predict_account_action(\stdClass $snapshot, ?int $now = null): string {
-        $now = $now ?? time();
         $state = $snapshot->accountstate;
         if (!$snapshot->liftable) {
             // A suspension FlexAccess did not set: recovery changes nothing (administrative decision).
@@ -274,7 +276,7 @@ final class recovery {
      */
     public static function recover(int $userid, ?int $courseid, array $options = [], ?int $now = null): \stdClass {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $result = (object) [
             'userid' => $userid,
             'overall' => self::NOT_ELIGIBLE,
@@ -439,11 +441,11 @@ final class recovery {
      * @param int[] $courseids Courses whose FlexAccess enrolment was targeted. When empty, the user's
      *     FlexAccess enrolments are considered and at least one must be effective (if there are any).
      * @param int|null $now Current time.
-     * @return \stdClass ->met (bool), ->account (auth_flexaccess account_access result), ->courses
-     *     (courseid => effective state), ->blockers (\stdClass[] scope 'account'|'course', courseid, code).
+     * @return \stdClass ->asof (reference time), ->met (bool), ->account (auth_flexaccess account_access
+     *     result), ->courses (courseid => effective state), ->blockers (\stdClass[] scope 'account'|'course', courseid, code).
      */
     public static function postcondition(int $userid, array $courseids, ?int $now = null): \stdClass {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $account = \auth_flexaccess\api::account_access($userid, $now);
         $blockers = [];
         if (!$account->usable) {
@@ -474,6 +476,8 @@ final class recovery {
             }
         }
         return (object) [
+            // Same reference time as the precheck snapshot of the recovery that asked for it.
+            'asof' => $now,
             'met' => $account->usable && $coursesmet,
             'account' => $account,
             'courses' => $courses,
@@ -542,7 +546,7 @@ final class recovery {
      * @return \stdClass[] Keyed by user id.
      */
     public static function recover_batch(array $userids, ?int $courseid, array $options = [], ?int $now = null): array {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $results = [];
         $confirmed = array_map('intval', (array) ($options['confirmcrosscourse'] ?? []));
         foreach (array_unique(array_map('intval', $userids)) as $userid) {
@@ -662,6 +666,8 @@ final class recovery {
         $suspended = (int) $account->suspended;
         return (object) [
             'userid' => $userid,
+            // The reference time every time-dependent fact of this snapshot was judged at.
+            'asof' => $now,
             'fullname' => trim($account->firstname . ' ' . $account->lastname),
             'email' => (string) $account->email,
             'reference' => (string) ($account->referencecode ?? ''),

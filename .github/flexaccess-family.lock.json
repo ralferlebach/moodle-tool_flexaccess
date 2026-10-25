@@ -1,0 +1,36 @@
+{
+  "family_version": 2026102500,
+  "mergeusers": {
+    "repo": "jpahullo/moodle-tool_mergeusers",
+    "sha": "61c13f0484986ba78898b1760464adfe2eb97aae",
+    "version": 2026081302
+  },
+  "plugins": {
+    "auth_flexaccess": {
+      "content": "b31fddcfab299b4c327164809c97bf3ad2a3a0bf1a93a3d90bf1eb87734c0aaa",
+      "ref": "development",
+      "repo": "ralferlebach/moodle-auth_flexaccess",
+      "version": 2026102500
+    },
+    "enrol_flexaccess": {
+      "content": "51b6e8b5ea21e3ffacf3dbd187c7dd4fe3733ec8ab982888128e07d6e5139128",
+      "ref": "development",
+      "repo": "ralferlebach/moodle-enrol_flexaccess",
+      "version": 2026102500
+    },
+    "mod_flexaccess": {
+      "content": "fd683fbfb15c38181052a56297670992511e2fcf12bde118b4c56d751fdb651a",
+      "ref": "development",
+      "repo": "ralferlebach/moodle-mod_flexaccess",
+      "version": 2026102500
+    },
+    "tool_flexaccess": {
+      "content": "a39a80621b74c659aab5a012126289a684ab80c95fb3a83a4823f1732b640a51",
+      "repo": "ralferlebach/moodle-tool_flexaccess",
+      "sha": "SELF",
+      "version": 2026102500
+    }
+  },
+  "schema": 1,
+  "source": "content"
+}

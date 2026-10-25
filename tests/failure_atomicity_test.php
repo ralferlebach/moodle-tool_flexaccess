@@ -28,11 +28,15 @@ use tool_flexaccess\local\invitation;
  * @covers \tool_flexaccess\local\batch
  */
 final class failure_atomicity_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /**
      * Both halves of FlexAccess are enabled on any site that provisions access lists.
      */
     protected function setUp(): void {
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         set_config('enrol_plugins_enabled', 'manual,flexaccess');
     }
 
@@ -72,12 +76,12 @@ final class failure_atomicity_test extends \advanced_testcase {
             $this->markTestSkipped('auth_flexaccess predates the deferred queue.');
         }
         $course = $this->getDataGenerator()->create_course();
-        $id = invitation::create((int) $course->id, 'person@example.com', 0, null, time());
+        $id = invitation::create((int) $course->id, 'person@example.com', 0, null, $this->clock->time());
 
         // First send, actually delivered: this token is the live one.
         invitation::send($id);
         $sink = $this->redirectEmails();
-        \auth_flexaccess\local\mail_worker::run(time());
+        \auth_flexaccess\local\mail_worker::run($this->clock->time());
         $messages = $sink->get_messages();
         $sink->close();
         preg_match('/token=([0-9a-f]{32})/', quoted_printable_decode((string) end($messages)->body), $m);
@@ -89,7 +93,7 @@ final class failure_atomicity_test extends \advanced_testcase {
         invitation::remind($id);
         \tool_flexaccess\local\invitation_mail_renderer::render_deferred_mail(
             ['invitationid' => $id, 'kind' => 'reminder'],
-            time()
+            $this->clock->time()
         );
 
         // The link the recipient already holds must still work: nothing replaced it yet.
@@ -107,7 +111,7 @@ final class failure_atomicity_test extends \advanced_testcase {
             $this->markTestSkipped('auth_flexaccess predates the deferred queue.');
         }
         $course = $this->getDataGenerator()->create_course();
-        $id = invitation::create((int) $course->id, 'person@example.com', 0, null, time());
+        $id = invitation::create((int) $course->id, 'person@example.com', 0, null, $this->clock->time());
 
         $first = $this->deliver($id, 'send');
         $second = $this->deliver($id, 'remind');
@@ -132,7 +136,7 @@ final class failure_atomicity_test extends \advanced_testcase {
             invitation::remind($id);
         }
         $sink = $this->redirectEmails();
-        \auth_flexaccess\local\mail_worker::run(time());
+        \auth_flexaccess\local\mail_worker::run($this->clock->time());
         $messages = $sink->get_messages();
         $sink->close();
         preg_match('/token=([0-9a-f]{32})/', quoted_printable_decode((string) end($messages)->body), $m);
@@ -183,7 +187,7 @@ final class failure_atomicity_test extends \advanced_testcase {
         );
 
         $sink = $this->redirectEmails();
-        \auth_flexaccess\local\mail_worker::run(time());
+        \auth_flexaccess\local\mail_worker::run($this->clock->time());
         $first = count($sink->get_messages());
         $sink->close();
         $this->assertSame(1, $first, 'The mail should have been delivered exactly once.');
@@ -194,7 +198,7 @@ final class failure_atomicity_test extends \advanced_testcase {
 
         // A later run retries only the acknowledgement and sends nothing again.
         $sink = $this->redirectEmails();
-        \auth_flexaccess\local\mail_worker::run(time() + DAYSECS);
+        \auth_flexaccess\local\mail_worker::run($this->clock->time() + DAYSECS);
         $second = count($sink->get_messages());
         $sink->close();
         $this->assertSame(0, $second, 'A delivered mail was sent again because of a callback failure.');

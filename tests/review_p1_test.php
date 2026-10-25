@@ -28,6 +28,14 @@ use tool_flexaccess\local\invitation;
  * @covers \tool_flexaccess\local\batch
  */
 final class review_p1_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
+    protected function setUp(): void {
+        parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
+    }
+
     public function test_granular_batch_capabilities_gate_actions(): void {
         $this->resetAfterTest();
         $course = $this->getDataGenerator()->create_course();
@@ -57,7 +65,7 @@ final class review_p1_test extends \advanced_testcase {
         $this->resetAfterTest();
         $this->setAdminUser();
         $course = $this->getDataGenerator()->create_course();
-        $id = invitation::create((int) $course->id, 'person@example.com', 0, null, time());
+        $id = invitation::create((int) $course->id, 'person@example.com', 0, null, $this->clock->time());
 
         // A pending invitation is revoked and reports success.
         $this->assertTrue(invitation::revoke($id));

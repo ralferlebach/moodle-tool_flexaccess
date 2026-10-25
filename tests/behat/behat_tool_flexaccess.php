@@ -50,12 +50,13 @@ class behat_tool_flexaccess extends behat_base {
         $enrolid = \enrol_flexaccess\local\enrol_service::ensure_instance($courseid);
         $userid = (int) \enrol_flexaccess\local\enrol_service::reserve_and_enrol(
             $enrolid,
-            fn(): int => \auth_flexaccess\api::create_temporary_user(time() + 3600, $courseid),
-            time()
+            fn(): int => \auth_flexaccess\api::create_temporary_user(\core\di::get(\core\clock::class)->time() + 3600, $courseid),
+            \core\di::get(\core\clock::class)->time()
         )->userid;
         [$first, $last] = array_pad(explode(' ', $fullname, 2), 2, '');
         $DB->update_record('user', (object) ['id' => $userid, 'firstname' => $first, 'lastname' => $last]);
-        $DB->set_field('auth_flexaccess_account', 'timeexpires', time() - 1, ['userid' => $userid]);
+        $expired = \core\di::get(\core\clock::class)->time() - 1;
+        $DB->set_field('auth_flexaccess_account', 'timeexpires', $expired, ['userid' => $userid]);
         \auth_flexaccess\local\account_service::expire_due();
     }
 

@@ -31,6 +31,14 @@ use tool_flexaccess\local\invitation;
  * @covers \tool_flexaccess\local\invitation_mail_renderer
  */
 final class invitation_queue_integration_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
+    protected function setUp(): void {
+        parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
+    }
+
     /**
      * Create a pending invitation for a fresh course.
      *
@@ -39,7 +47,7 @@ final class invitation_queue_integration_test extends \advanced_testcase {
      */
     private function make(string $email): int {
         $course = $this->getDataGenerator()->create_course();
-        return invitation::create((int) $course->id, $email, 0, null, time());
+        return invitation::create((int) $course->id, $email, 0, null, $this->clock->time());
     }
 
     public function test_invitations_are_subject_to_the_hourly_send_limit(): void {
@@ -52,7 +60,7 @@ final class invitation_queue_integration_test extends \advanced_testcase {
         // Ten mails per hour may leave this site (the smallest non-zero allowed limit).
         set_config('maillimitperhour', 10, 'auth_flexaccess');
         // Nine of this hour's budget is already spent, so exactly one invitation can still go out.
-        $now = time();
+        $now = $this->clock->time();
         for ($i = 0; $i < 9; $i++) {
             $DB->insert_record('auth_flexaccess_mailqueue', (object) [
                 'userid' => null,
@@ -74,7 +82,7 @@ final class invitation_queue_integration_test extends \advanced_testcase {
         $this->assertSame(2, $DB->count_records('auth_flexaccess_mailqueue', ['status' => 'queued']));
 
         $sink = $this->redirectEmails();
-        \auth_flexaccess\local\mail_worker::run(time());
+        \auth_flexaccess\local\mail_worker::run($this->clock->time());
         $sink->close();
 
         // The limit applies to invitations exactly as to every other FlexAccess mail: one goes out,
@@ -96,7 +104,7 @@ final class invitation_queue_integration_test extends \advanced_testcase {
         invitation::revoke($id);
 
         $sink = $this->redirectEmails();
-        \auth_flexaccess\local\mail_worker::run(time());
+        \auth_flexaccess\local\mail_worker::run($this->clock->time());
         $messages = $sink->get_messages();
         $sink->close();
 

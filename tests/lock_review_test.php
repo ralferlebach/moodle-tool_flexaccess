@@ -30,6 +30,9 @@ use tool_flexaccess\local\reconciliation;
  * @covers \auth_flexaccess\local\lifecycle
  */
 final class lock_review_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /** @var \stdClass FlexAccess enrol instance. */
     private $instance;
 
@@ -41,6 +44,7 @@ final class lock_review_test extends \advanced_testcase {
     protected function setUp(): void {
         global $DB;
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         if (!method_exists('\auth_flexaccess\api', 'attribute_suspension')) {
             $this->markTestSkipped('Requires auth_flexaccess 2026092802+.');
         }
@@ -58,7 +62,7 @@ final class lock_review_test extends \advanced_testcase {
      */
     private function legacy(): int {
         global $DB;
-        $userid = \auth_flexaccess\api::create_temporary_user(time() + 3600);
+        $userid = \auth_flexaccess\api::create_temporary_user($this->clock->time() + 3600);
         enrol_get_plugin('flexaccess')->enrol_user($this->instance, $userid, null, 0, 0, ENROL_USER_SUSPENDED);
         $DB->set_field('auth_flexaccess_account', 'accountstate', account_state::EXPIRED, ['userid' => $userid]);
         $DB->set_field('user', 'suspended', 1, ['id' => $userid]);
@@ -75,7 +79,7 @@ final class lock_review_test extends \advanced_testcase {
     public function test_listing(): void {
         global $DB;
         $undecided = $this->legacy();
-        $flex = \auth_flexaccess\api::create_temporary_user(time() - 1);
+        $flex = \auth_flexaccess\api::create_temporary_user($this->clock->time() - 1);
         account_service::expire_due();
         reconciliation::reconcile_user($flex, reconciliation::MODE_REPAIR, reconciliation::SOURCE_TASK);
         $this->assertSame([$undecided], reconciliation::lock_review_userids());
@@ -146,7 +150,7 @@ final class lock_review_test extends \advanced_testcase {
      */
     public function test_skip_and_capability(): void {
         $this->setAdminUser();
-        $live = \auth_flexaccess\api::create_temporary_user(time() + 3600);
+        $live = \auth_flexaccess\api::create_temporary_user($this->clock->time() + 3600);
         $this->assertSame([$live => 'skipped'], reconciliation::decide_lock_origin([$live], reconciliation::DECIDE_ADMIN));
         $this->assertFalse(\auth_flexaccess\api::attribute_suspension($live, 'admin'), 'not suspended');
         $this->assertFalse(\auth_flexaccess\api::attribute_suspension($live, 'whatever'));

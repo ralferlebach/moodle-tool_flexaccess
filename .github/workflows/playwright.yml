@@ -82,8 +82,9 @@ jobs:
           python3 plugin/.github/scripts/flexaccess_family.py resolve --self tool_flexaccess --self-dir plugin \
             --self-sha "$GITHUB_SHA" --ref "$SIBLING_REF" --wait 600 --out family-lock.json \
             --summary "$GITHUB_STEP_SUMMARY"
+          # tool_mergeusers (pinned in flexaccess-family.json) for the consolidation journey (auth_flexaccess #13).
           python3 plugin/.github/scripts/flexaccess_family.py fetch --lock-file family-lock.json \
-            --self tool_flexaccess --layout moodle --dest "$MOODLE_PUBLIC"
+            --self tool_flexaccess --layout moodle --dest "$MOODLE_PUBLIC" --with-mergeusers
 
           # The plugin under test comes from this checkout, never from a clone.
           rm -rf "$MOODLE_PUBLIC/admin/tool/flexaccess"

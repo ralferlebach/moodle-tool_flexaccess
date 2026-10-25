@@ -27,6 +27,14 @@ use tool_flexaccess\local\invitation;
  * @covers \tool_flexaccess\local\invitation
  */
 final class invitation_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
+    protected function setUp(): void {
+        parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
+    }
+
     /**
      * Create an invitation for a fresh course.
      *
@@ -68,7 +76,7 @@ final class invitation_test extends \advanced_testcase {
         invitation::send($id);
         // The mail is queued secret-free; the token is minted by the worker at delivery, so the
         // queue has to actually run before any token exists.
-        \auth_flexaccess\local\mail_worker::run(time());
+        \auth_flexaccess\local\mail_worker::run($this->clock->time());
         $messages = $sink->get_messages();
         $sink->close();
         $body = $messages ? quoted_printable_decode((string) end($messages)->body) : '';
@@ -130,7 +138,7 @@ final class invitation_test extends \advanced_testcase {
 
         // The token is minted by the worker at delivery and appears only in the outgoing mail.
         $sink = $this->redirectEmails();
-        \auth_flexaccess\local\mail_worker::run(time());
+        \auth_flexaccess\local\mail_worker::run($this->clock->time());
         $messages = $sink->get_messages();
         $sink->close();
         preg_match('/token=([0-9a-f]{32})/', quoted_printable_decode((string) end($messages)->body), $m);
@@ -164,13 +172,13 @@ final class invitation_test extends \advanced_testcase {
         $this->assertSame(0, (int) invitation::get($id)->timesent);
         $this->assertFalse(invitation::remind($id), 'A reminder needs a delivered invitation.');
 
-        \auth_flexaccess\local\mail_worker::run(time());
+        \auth_flexaccess\local\mail_worker::run($this->clock->time());
         $this->assertGreaterThan(0, (int) invitation::get($id)->timesent);
         $this->assertCount(1, $sink->get_messages());
 
         // The reminder follows the same path: queue, then deliver, then count.
         $this->assertTrue(invitation::remind($id));
-        \auth_flexaccess\local\mail_worker::run(time());
+        \auth_flexaccess\local\mail_worker::run($this->clock->time());
         $this->assertSame(1, (int) invitation::get($id)->remindercount);
         $this->assertGreaterThan(0, (int) invitation::get($id)->timereminded);
         $this->assertCount(2, $sink->get_messages());

@@ -103,9 +103,11 @@ final class batch_import_schema_test extends \advanced_testcase {
         $path = make_request_directory() . '/inflated.xlsx';
         (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save($path);
 
-        $start = microtime(true);
+        // A duration, not a point in time: the monotonic stopwatch (not the frozen calendar clock).
+        $stopwatch = \core\di::get(\tool_flexaccess\local\stopwatch::class);
+        $mark = $stopwatch->start();
         $rows = batch_import::parse($path);
-        $elapsed = microtime(true) - $start;
+        $elapsed = $stopwatch->seconds_since($mark);
 
         $this->assertCount(1, $rows);
         $this->assertSame('kurs-abc', $rows[0]['username']);

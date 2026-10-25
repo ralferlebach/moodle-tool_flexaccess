@@ -48,7 +48,7 @@ if ($action === 'new') {
     if ($form->is_cancelled()) {
         redirect($returnurl);
     } else if ($data = $form->get_data()) {
-        $now = time();
+        $now = \core\di::get(\core\clock::class)->time();
         $expiry = (int) ($data->expiry ?? 0);
         $timeexpires = (!$data->permanent && $expiry > 0) ? $now + $expiry : null;
         $result = batch::create(

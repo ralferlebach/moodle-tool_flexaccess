@@ -71,7 +71,7 @@ final class health {
      * @return array<string, \stdClass[]> Section id => items (key, status, label, detail, repair, count).
      */
     public static function run(?int $now = null): array {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $sections = ['plugins' => self::check_plugins()];
         if (!class_exists('\auth_flexaccess\api') || !class_exists('\enrol_flexaccess\api')) {
             return $sections;

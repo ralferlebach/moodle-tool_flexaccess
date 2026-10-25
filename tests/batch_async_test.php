@@ -27,11 +27,15 @@ use tool_flexaccess\local\batch;
  * @covers \tool_flexaccess\local\batch
  */
 final class batch_async_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /**
      * Both halves of FlexAccess are enabled on any site that provisions access lists.
      */
     protected function setUp(): void {
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         set_config('enrol_plugins_enabled', 'manual,flexaccess');
     }
 
@@ -65,7 +69,7 @@ final class batch_async_test extends \advanced_testcase {
         $this->assertSame($count, (int) $batch->requestedcount);
 
         // Running the queued ad-hoc task provisions the accounts.
-        $task = \core\task\manager::get_next_adhoc_task(time());
+        $task = \core\task\manager::get_next_adhoc_task($this->clock->time());
         $this->assertInstanceOf(\tool_flexaccess\task\provision_batch::class, $task);
         $task->execute();
         \core\task\manager::adhoc_task_complete($task);

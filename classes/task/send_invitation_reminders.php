@@ -49,7 +49,7 @@ final class send_invitation_reminders extends \core\task\scheduled_task {
         if ($days <= 0) {
             return;
         }
-        $now = time();
+        $now = \core\di::get(\core\clock::class)->time();
         $cutoff = $now - $days * DAYSECS;
         foreach (invitation::due_reminders($cutoff, $now, 500) as $id) {
             invitation::remind($id, $now);

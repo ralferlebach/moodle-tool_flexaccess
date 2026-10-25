@@ -127,7 +127,7 @@ final class campaign {
      */
     public static function create(array $data): array {
         global $DB, $USER;
-        $now = time();
+        $now = \core\di::get(\core\clock::class)->time();
         $token = self::unique_token();
         $record = self::normalise($data);
         $record->tokenhash = self::hash_token($token);
@@ -154,7 +154,7 @@ final class campaign {
         }
         $token = self::unique_token();
         $DB->set_field(self::TABLE, 'tokenhash', self::hash_token($token), ['id' => $id]);
-        $DB->set_field(self::TABLE, 'timemodified', time(), ['id' => $id]);
+        $DB->set_field(self::TABLE, 'timemodified', \core\di::get(\core\clock::class)->time(), ['id' => $id]);
         $DB->set_field(self::TABLE, 'usermodified', (int) $USER->id, ['id' => $id]);
         return $token;
     }
@@ -181,7 +181,7 @@ final class campaign {
                 $record->gatepasswordhash = null;
             }
         }
-        $record->timemodified = time();
+        $record->timemodified = \core\di::get(\core\clock::class)->time();
         $record->usermodified = (int) $USER->id;
         $DB->update_record(self::TABLE, $record);
     }
@@ -205,7 +205,7 @@ final class campaign {
      * @return bool
      */
     public static function is_redeemable(\stdClass $campaign, ?int $now = null): bool {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         if (empty($campaign->enabled)) {
             return false;
         }
@@ -235,7 +235,7 @@ final class campaign {
      */
     public static function redeem(int $id, ?int $now = null): bool {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $lockfactory = \core\lock\lock_config::get_lock_factory('tool_flexaccess_campaign');
         $lock = $lockfactory->get_lock('campaign_' . $id, 10);
         if (!$lock) {
@@ -263,7 +263,7 @@ final class campaign {
      */
     public static function release_reservation(int $id, ?int $now = null): void {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $lockfactory = \core\lock\lock_config::get_lock_factory('tool_flexaccess_campaign');
         $lock = $lockfactory->get_lock('campaign_' . $id, 10);
         if (!$lock) {

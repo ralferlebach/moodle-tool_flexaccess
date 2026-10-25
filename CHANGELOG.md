@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.2.0 (2026102500) — 2026-10-25 — Einzelentscheidungen auf der Prüfseite, Clock-API in Tests
+- **Seite „LTI-Identitäten“ (auth #13):** „Kollisionen geprüft“ schließt nur Kollisionen; gesicherte FlexAccess-Einschreibungen stehen in einem eigenen Abschnitt mit Zustand vor der Zusammenführung und – wenn sie nicht übernommen werden können – einem Formular „Nicht übernehmen“ mit Pflichtbegründung. Archivierte Zeilen werden reduziert angezeigt (keine Zugangsdaten, auch nicht aus Altbeständen). Neuer Ablehnungsgrund `evidencelimit`.
+- **Clock-API in Tests (P1):** Alle Testklassen frieren die Moodle-Uhr ein; Fixtures (`seed.php`, `merge_cli.php`, Behat-Kontext) lesen einen Bezugszeitpunkt über `\core\clock`; die Laufzeitmessung in `batch_import_schema_test` nutzt die monotone `stopwatch`. Gate `clock_usage_test` mit dokumentierter Ausnahme `stopwatch` (`hrtime()`); Richtlinie `docs/clock-policy.md`.
+- Playwright `merge-review.spec.js`: Kollision und gesicherte Einschreibung werden getrennt entschieden, die allgemeine Bestätigung lässt die Einschreibung offen, ein in einem Altbestand archiviertes Token wird nicht angezeigt (`merge_cli.php pendingpair`).
+- Version `2026102500`, Release `1.2.0`, `MATURITY_STABLE`, `supported` [405, 503].
+
+## 1.2.0 (2026102401) — 2026-10-24 — Zusammenführung: Nachweis immer, SSO-Ende-zu-Ende
+- **Seite „LTI-Identitäten“ (auth #13):** Der Hinweis „keine Freigabe nötig“ entfällt; jede Zusammenführung zeigt das Freigabeformular. Neue Ablehnungsgründe `mergercoverage`, `ssounsupported`, `ssounverified`, `ssochanged`, `enrolmentspending`. Archivierte Kollisionen zeigen Tabelle, Schlüsselfelder und -werte (escaped).
+- **Playwright `merge-review.spec.js`:**
+  - Ein temporärer Besucher wird ohne Nachweis nicht zusammengeführt (CLI-Merge abgewiesen, Konto bleibt).
+  - Echte OAuth-2-Anmeldung über einen lokalen Test-Anbieter (Node, `127.0.0.1:8091`): Anmeldung als institutionelle Nutzerin, Freigabe mit Nachweis, Zusammenführung des FlexAccess-Kontos in das institutionelle Konto, erneute Anmeldung über den Anbieter – dieselbe Moodle-ID, Kurs des entfernten Kontos erreichbar.
+  - `seed.php` legt dafür Aussteller, Endpunkte und Feldzuordnungen an (nur Testsite; die Endpunkte werden direkt in die Datenbank geschrieben, weil Moodle für Aussteller https verlangt). `merge_cli.php`: neue Befehle `approve`, `user`, `linked`.
+- Version `2026102401`, Release `1.2.0`, `MATURITY_STABLE`, `supported` [405, 503].
+
+## 1.2.0 (2026102400) — 2026-10-24 — Moodle-Uhr, Inhalts-Lock, Zusammenführung aller Kontotypen
+- **Moodle-Uhr statt `time()` (#13, CLOCK-API).**
+  - Alle 32 Laufzeit-Zeitabfragen (Recovery, Abgleich, Einladungen, Kampagnen, Zugangslisten inkl. Import/Umwandlung/Download, Systemstatus, Erinnerungsaufgabe, Seiten) lesen `\core\di::get(\core\clock::class)->time()`; ein übergebenes `$now` hat weiter Vorrang.
+  - Laufzeitbudgets messen monoton: `local\stopwatch` (über `\core\di`, `hrtime()`) ersetzt `microtime(true)` im Abgleich; eine eingefrorene Uhr lässt kein Budget endlos laufen, eine springende Wanduhr keines vorzeitig enden.
+  - Recovery: Vorschau, Reparatur und Nachbedingung urteilen über denselben Zeitpunkt (`->asof` im Snapshot und in der Nachbedingung); die Vorhersage liest die Uhr nicht erneut.
+  - Einladungen: Die Erinnerungsauswahl nutzt dieselbe Grenze wie die Annahme (bis einschließlich der Ablaufsekunde).
+  - Tests (`clock_test`, 21 Fälle): Einladungsablauf T−1/T/T+1 (Annahme, Erinnerung, Auswahl), Erinnerungsaufgabe, ein Bezugszeitpunkt bei Annahme, Kampagnenfenster an beiden Grenzen, Ablauf von Zugangslisten-Konten, asynchrone Zugangsliste über mehrere Chunks mit einem Bezugszeitpunkt und idempotenter Wiederholung, Recovery-Nachbedingung um das Einschreibeende, ein Bezugszeitpunkt für die ganze Recovery, Stoppuhr bei eingefrorener Uhr, Budget des Abgleichs. 15 der 21 Fälle schlagen auf dem bisherigen Code fehl.
+- **Begrenzte Abfragen wirklich begrenzt:** `invitation::due_reminders()` und `reconciliation::lock_review_userids()` übergaben ihr Limit an `get_fieldset_*()`, das keines kennt (`query_limits_test`).
+- **Release-Lock im Release (#12):** `.github/flexaccess-family.lock.json` ist versioniert und pinnt auth, enrol und mod über ihren Inhalt (SHA-256 über Pfad und Blob jeder Datei), tool_flexaccess als `SELF` mit eigenem Inhalt ohne Lock und tool_mergeusers per SHA. Das Gate akzeptiert nur Branch-Köpfe mit genau diesem Inhalt und hält ihre Commit-SHAs fest; es wartet bis zu 30 Minuten auf noch nicht hochgeladene Geschwister. Neue Befehle `pin-local` und `digest`; 17 Selbsttests (5 neu). Doku `docs/release-gate.md`.
+- **Zusammenführung aller Kontotypen (auth #13):** Die Seite „LTI-Identitäten“ prüft beliebige Kontenpaare, zeigt Herkunft, behaltene und wegfallende Anmeldung, widersprüchliche Kursleistungen und gesicherte Nachweise; die Freigabe verlangt Nachweisart und Beschreibung; „Nachweis geprüft“ schließt den Prüffall. Playwright `merge-review.spec.js`: Vorschau, abgewiesene Gegenrichtung, Freigabe mit Nachweis (E-Mail-Adressen abgewiesen), echter Merge über tool_mergeusers, Anmeldung mit dem behaltenen Kennwort, Kurs und Bewertung beim Überlebenden. Der Playwright-Workflow installiert dafür das gepinnte tool_mergeusers.
+- **Testbericht** `docs/testbericht-2026102400.md`: PHPUnit aller vier Plugins auf Moodle 4.5/5.0/5.2/5.3 × PostgreSQL/MariaDB, Behat, Playwright und Zwei-Site-LTI auf 4.5 und 5.3, Upgrade von 2026092900 und 2026102100 – lokal; GitHub-CI auf den hochgeladenen Ständen steht aus.
+- Version `2026102400`, Release `1.2.0`, `MATURITY_STABLE`, `supported` [405, 503].
+
+## 1.2.0 (2026102100) — 2026-10-21 — Versions-Gleichschritt
+- Keine funktionale Änderung. Der Systemstatus-Test setzt die Einschreibekonfiguration über `instance_config::save()` (enrol #13).
+- Version `2026102100`, Release `1.2.0`, `MATURITY_STABLE`, `supported` [405, 503]. Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026102100`.
+
 ## 1.2.0 (2026101800) — 2026-10-18 — Release-Gate mit exakten Commits, Umhängen nur nach bestätigtem Merge
 - **Plugin-Familie in der CI exakt gepinnt (#12, RELEASE-CI).** `.github/flexaccess-family.json` und `.github/scripts/flexaccess_family.py` (in allen vier Repositories gleich) legen die Geschwister und tool_mergeusers je Lauf auf Commit-SHAs fest. Die Geschwister müssen dieselbe Familienversion tragen; es gibt keinen Rückfall auf einen anderen Branch. Jede installierte Version wird gegen den Lock geprüft. Moodle-, PHP- und Datenbankversion und die SHA-Matrix stehen in der Job-Zusammenfassung und als Artefakt.
   - Neues **Release-Gate** `family-release.yml`: Ein committeter Lock (`.github/flexaccess-family.lock.json`, Modus „propose“ erzeugt ihn) wird mit PHPUnit aller vier Plugins auf 4.5/5.0/5.2/5.3 × PostgreSQL/MariaDB und mit den Zwei-Site-LTI-Journeys auf 4.5/5.3 getestet. Die SHA-256 der Release-ZIPs (`git archive`) werden geprüft bzw. protokolliert. Ablauf: `docs/release-gate.md`.
@@ -7,6 +38,7 @@
   - Selbsttests des Resolvers mit lokalen Test-Repositories: fehlender Branch, ungleiche Versionen, fehlende/verkürzte SHA, ungepinntes tool_mergeusers, manipulierter Lock, ZIP-Prüfsummen-Abweichung, fehlender Release-Lock.
 - **LTI-Identitäten (zu auth #14):** Die Seite zeigt den Nachweis der Zusammenführung (tool_mergeusers-Protokoll) und bietet „Umhängen“ nur für bestätigte Merges an, mit Bestätigung der Zugehörigkeit; sonst nennt sie den Grund. Neuer Playwright-Test: Ein nur registriertes Paar bietet kein Umhängen an.
 - **Recovery (zu enrol #11):** „Zugang wiederhergestellt“ nur, wenn Core die Einschreibung auch in seinen gerundeten Listen führt; Integrationstest an der Rundungsgrenze.
+- **CI-Nachbesserung (20.10.2026, ohne Codeänderung, Version unverändert):** Die Läufe vom 20.10. waren in allen vier Repositories rot, weil `moodle-plugin-ci install` die per `fetch` geladenen Geschwister ohne `--extra-plugins` nicht installierte (PHPUnit/Behat: „Class enrol_flexaccess\local\enrol_service not found“, übersprungene Tests) und `record_environment.php` die reguläre Site-Datenbank las, die moodle-plugin-ci gar nicht anlegt („Table config does not exist“). Jetzt erhält jede Installation das Verzeichnis ausdrücklich, und das Protokoll liest `version.php` im Moodle-Baum sowie die PHPUnit-/Behat-Testsites direkt; tool_mergeusers wird nur dort verlangt, wo der Job es pinnt.
 - Version `2026101800`, Release `1.2.0`, `MATURITY_STABLE`, `supported` [405, 503]. Abhängigkeiten `auth_flexaccess` und `enrol_flexaccess` ≥ `2026101800`.
 
 ## 1.2.0 (2026101700) — 2026-10-17 — Recovery nur bei erreichtem Ziel, LTI-Identitäten, Moodle 5.3
