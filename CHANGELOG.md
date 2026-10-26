@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0 (2026102600) — 2026-10-26 — Release-Lock nach CI-Korrektur
+- Keine funktionale Änderung. Release-Lock für 2026102600; Nachtrag zum Testbericht `docs/testbericht-2026102600.md` (Ursache des roten Release-Gates und Nachweis der getrennten Consumer-/Provider-Läufe).
+- Version `2026102600`, Release `1.2.0`, `MATURITY_STABLE`, `supported` [405, 503].
+
 ## 1.2.0 (2026102502) — 2026-10-25 — Produktivcode-Audit: POST-Vertrag, Zugangsdaten-Paket, Import, Abgleich
 - **Ändernde Aktionen nur per POST (#14, P1).** `recover.php`, `user.php` und `ltiidentities.php` verlangen für jede ändernde Aktion serverseitig POST (`local\request::require_post()`), vor Sesskey und Berechtigung. GET oder HEAD mit gültigem Sesskey ändern nichts; die Schaltflächen tragen keinen Sesskey mehr in der URL. Playwright `method-contract.spec.js`.
 - **Zugangsdaten-Paket vollständig oder gar nicht (#15, P1).**
