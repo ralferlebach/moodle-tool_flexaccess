@@ -109,6 +109,8 @@ function tool_flexaccess_ltiidentities_reasons(?string $reasons): string {
 
 // Actions change identities: POST, sesskey and the user-update capability on top of the page's capability.
 if (in_array($action, ['approve', 'acknowledge', 'discardenrolment', 'recheck', 'repoint', 'removebinding'], true)) {
+    // Identity changes: POST only, before any side effect, then sesskey and capability (tool #14).
+    \tool_flexaccess\local\request::require_post();
     require_sesskey();
     require_capability('moodle/user:update', $context);
     $message = '';

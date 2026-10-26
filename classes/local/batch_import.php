@@ -59,8 +59,26 @@ final class batch_import {
     /** Schema marker written to H1 by the exporter; the importer accepts only this format. */
     public const SCHEMA_VERSION = 'FLEXACCESS-BATCH-V1';
 
-    /** Maximum data rows read from an import file, bounding the row iterator. */
+    /**
+     * Maximum data records of an import file (tool_flexaccess #16): the records are rows 2 to MAX_IMPORT_ROWS + 1
+     * (row 1 is the header). Any populated row beyond that is refused, never ignored.
+     */
     public const MAX_IMPORT_ROWS = 2000;
+
+    /**
+     * Maximum uncompressed size of the whole workbook package - the 2 MiB upload limit does not bound it (a
+     * highly compressed sheet). An export of 2000 records unpacks to well under 2 MiB.
+     */
+    public const MAX_UNCOMPRESSED_BYTES = 16777216;
+
+    /** Maximum cell elements in the worksheet (an export of 2000 records has about 16000). */
+    public const MAX_CELLS = 40000;
+
+    /** Maximum row elements in the worksheet, populated or not. */
+    public const MAX_ROW_ELEMENTS = 20000;
+
+    /** Columns of the export layout; only these are loaded. */
+    private const COLUMNS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
     /**
      * The selectable username rules, for a form select.
@@ -82,12 +100,17 @@ final class batch_import {
      * Columns follow the export layout: A username (match key), C first name, D last name, E email,
      * G optional new username. The header row is skipped.
      *
-     * Hardened against the PhpSpreadsheet unbounded-row-dimension CPU DoS (CVE-2026-40902): the file
-     * size is capped, an explicit read-only Xlsx reader is used (no format sniffing), and the row
-     * iteration is bounded to a fixed window regardless of the sheet's declared dimensions.
+     * The file is checked completely before anything is accepted (tool_flexaccess #16): the package is
+     * inspected without loading it (one worksheet, bounded uncompressed size, bounded number of row and cell
+     * elements, so a highly compressed or inflated sheet cannot exhaust CPU or memory), and every populated
+     * cell is located. A populated row outside rows 2 to MAX_IMPORT_ROWS + 1 - also a single sparse row far
+     * down the sheet - and a populated row without a username are refused with a clear error; nothing is
+     * dropped silently. Only then is the bounded window loaded, through a read filter. The declared sheet
+     * dimension is never trusted (CVE-2026-40902 pattern).
      *
      * @param string $filepath Absolute path to the uploaded .xlsx file.
      * @return array<int,array{username:string,firstname:string,lastname:string,email:string,newusername:string}>
+     * @throws \moodle_exception On every refused file; no partial result exists.
      */
     public static function parse(string $filepath): array {
         if (!is_readable($filepath)) {
@@ -101,8 +124,50 @@ final class batch_import {
                 (object) ['limit' => display_size(self::MAX_IMPORT_BYTES)]
             );
         }
+        $populated = self::inspect($filepath);
+        $last = self::MAX_IMPORT_ROWS + 1;
+        foreach ($populated as $rownumber => $true) {
+            if ($rownumber > $last) {
+                $outside = $rownumber === $last + 1 ? 'batchimporttoomanyrows' : 'batchimportoutofwindow';
+                throw new \moodle_exception($outside, 'tool_flexaccess', '', (object) [
+                    'max' => self::MAX_IMPORT_ROWS,
+                    'row' => $rownumber,
+                    'last' => $last,
+                ]);
+            }
+        }
+
         $reader = IOFactory::createReader('Xlsx');
         $reader->setReadDataOnly(true);
+        $reader->setReadFilter(new class (self::COLUMNS, $last) implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
+            /**
+             * Filter of the bounded window.
+             *
+             * @param string[] $columns Columns to load.
+             * @param int $last Last row to load.
+             */
+            public function __construct(
+                /** @var string[] Columns to load. */
+                private array $columns,
+                /** @var int Last row to load. */
+                private int $last
+            ) {
+            }
+
+            // phpcs:disable moodle.NamingConventions.ValidFunctionName.LowercaseMethod -- name given by IReadFilter.
+            /**
+             * Whether a cell is loaded.
+             *
+             * @param string $columnaddress Column.
+             * @param int $row Row.
+             * @param string $worksheetname Worksheet.
+             * @return bool
+             */
+            public function readCell($columnaddress, $row, $worksheetname = ''): bool {
+                return $row <= $this->last && in_array($columnaddress, $this->columns, true);
+            }
+            // phpcs:enable moodle.NamingConventions.ValidFunctionName.LowercaseMethod
+        });
         try {
             $spreadsheet = $reader->load($filepath);
         } catch (\Throwable $e) {
@@ -124,14 +189,7 @@ final class batch_import {
         }
 
         $rows = [];
-        $first = true;
-        // One row beyond the limit is read on purpose: if it carries data the file is too big, and
-        // the import is refused instead of silently dropping records.
-        foreach ($sheet->getRowIterator(1, self::MAX_IMPORT_ROWS + 2) as $row) {
-            if ($first) {
-                $first = false;
-                continue;
-            }
+        foreach ($sheet->getRowIterator(2, $last) as $row) {
             $cells = [];
             $it = $row->getCellIterator('A', 'G');
             $it->setIterateOnlyExistingCells(false);
@@ -140,15 +198,14 @@ final class batch_import {
             }
             $username = \core_text::strtolower($cells['A'] ?? '');
             if ($username === '') {
+                if (isset($populated[$row->getRowIndex()])) {
+                    // A record without its match key would be lost: refuse instead of skipping it. This also
+                    // covers a value in a column the import does not read (the package scan saw it).
+                    throw new \moodle_exception('batchimportrowwithoutusername', 'tool_flexaccess', '', (object) [
+                        'row' => $row->getRowIndex(),
+                    ]);
+                }
                 continue;
-            }
-            if (count($rows) >= self::MAX_IMPORT_ROWS) {
-                throw new \moodle_exception(
-                    'batchimporttoomanyrows',
-                    'tool_flexaccess',
-                    '',
-                    (object) ['max' => self::MAX_IMPORT_ROWS]
-                );
             }
             $rows[] = [
                 'username' => $username,
@@ -159,6 +216,117 @@ final class batch_import {
             ];
         }
         return $rows;
+    }
+
+    /**
+     * Inspect the workbook package without loading it: structure and resource bounds, and the rows that
+     * hold a value anywhere in the worksheet.
+     *
+     * @param string $filepath Workbook.
+     * @return array<int, true> Populated row numbers (any column), in document order.
+     * @throws \moodle_exception batchimportunreadable, batchimportbadschema or batchimportcomplex.
+     */
+    private static function inspect(string $filepath): array {
+        $zip = new \ZipArchive();
+        if ($zip->open($filepath, \ZipArchive::RDONLY) !== true) {
+            throw new \moodle_exception('batchimportunreadable', 'tool_flexaccess');
+        }
+        $uncompressed = 0;
+        $sheets = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $stat = $zip->statIndex($i);
+            $uncompressed += (int) ($stat['size'] ?? 0);
+            if (preg_match('~^xl/worksheets/[^/]+\.xml$~', (string) $stat['name'])) {
+                $sheets[] = (string) $stat['name'];
+            }
+        }
+        if ($uncompressed > self::MAX_UNCOMPRESSED_BYTES) {
+            $zip->close();
+            throw self::too_complex();
+        }
+        if (count($sheets) !== 1) {
+            // The export has exactly one worksheet; data on a second one would be ignored.
+            $zip->close();
+            throw new \moodle_exception('batchimportbadschema', 'tool_flexaccess', '', (object) [
+                'expected' => self::SCHEMA_VERSION,
+            ]);
+        }
+        // Bounded by the uncompressed-size check above; no stream wrapper, no network, no entity expansion.
+        // The read is capped as well, in case the declared size in the package is wrong.
+        $sheetxml = $zip->getFromName($sheets[0], self::MAX_UNCOMPRESSED_BYTES + 1);
+        $zip->close();
+        if (is_string($sheetxml) && strlen($sheetxml) > self::MAX_UNCOMPRESSED_BYTES) {
+            throw self::too_complex();
+        }
+        $xml = new \XMLReader();
+        if (!is_string($sheetxml) || $sheetxml === '' || !@$xml->XML($sheetxml, null, LIBXML_NONET | LIBXML_COMPACT)) {
+            throw new \moodle_exception('batchimportunreadable', 'tool_flexaccess');
+        }
+        $populated = [];
+        $rowelements = 0;
+        $cells = 0;
+        $row = 0;
+        try {
+            while (@$xml->read()) {
+                if ($xml->nodeType !== \XMLReader::ELEMENT) {
+                    continue;
+                }
+                if ($xml->localName === 'row') {
+                    if (++$rowelements > self::MAX_ROW_ELEMENTS) {
+                        throw self::too_complex();
+                    }
+                    $row = (int) $xml->getAttribute('r') ?: $row + 1;
+                } else if ($xml->localName === 'c') {
+                    if (++$cells > self::MAX_CELLS) {
+                        throw self::too_complex();
+                    }
+                    if (!$xml->isEmptyElement) {
+                        // A cell with content (<v>, <is> or <f>); a styled empty cell is self-closing.
+                        $reference = (string) $xml->getAttribute('r');
+                        $cellrow = preg_match('/(\d+)$/', $reference, $m) ? (int) $m[1] : $row;
+                        if (self::cell_has_value($xml)) {
+                            $populated[$cellrow] = true;
+                        }
+                    }
+                }
+            }
+        } finally {
+            $xml->close();
+        }
+        return $populated;
+    }
+
+    /**
+     * The refusal of a workbook that is too large or too complex to check safely.
+     *
+     * @return \moodle_exception
+     */
+    private static function too_complex(): \moodle_exception {
+        return new \moodle_exception('batchimportcomplex', 'tool_flexaccess', '', (object) [
+            'limit' => display_size(self::MAX_UNCOMPRESSED_BYTES),
+        ]);
+    }
+
+    /**
+     * Whether the current <c> element holds a value (reads up to its end).
+     *
+     * @param \XMLReader $xml Reader positioned on a non-empty <c>.
+     * @return bool
+     */
+    private static function cell_has_value(\XMLReader $xml): bool {
+        $depth = $xml->depth;
+        while (@$xml->read()) {
+            if ($xml->nodeType === \XMLReader::END_ELEMENT && $xml->depth === $depth) {
+                return false;
+            }
+            if ($xml->nodeType === \XMLReader::ELEMENT && in_array($xml->localName, ['v', 'is', 'f'], true)) {
+                $inner = trim((string) $xml->readString());
+                if ($inner !== '' || $xml->localName === 'f') {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**

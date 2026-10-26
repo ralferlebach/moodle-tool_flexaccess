@@ -108,7 +108,10 @@ function tool_flexaccess_recover_blocker(stdClass $blocker, int $userid): string
 
 $tabs = $scope !== null ? navigation::render_course($courseid, navigation::USERS) : navigation::render_system(navigation::USERS);
 
-if ($confirm && confirm_sesskey()) {
+if ($confirm) {
+    // Recovery changes enrolments and accounts: POST only, then sesskey - before any side effect (tool #14).
+    \tool_flexaccess\local\request::require_post();
+    require_sesskey();
     $results = recovery::recover_batch($userids, $scope, [
         'reactivate' => tool_flexaccess_recover_pairs('reactivate'),
         'reenrol' => tool_flexaccess_recover_pairs('reenrol'),

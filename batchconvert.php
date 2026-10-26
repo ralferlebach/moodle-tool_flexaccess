@@ -50,12 +50,26 @@ $form = new \tool_flexaccess\form\batch_convert_form(null, ['id' => $id]);
 
 if ($form->is_cancelled()) {
     redirect($viewurl);
-} else if ($data = $form->get_data()) {
+}
+$refused = null;
+$rows = null;
+if ($data = $form->get_data()) {
     $tempdir = make_request_directory();
     $path = $tempdir . '/import.xlsx';
     $form->save_file('excelfile', $path, true);
 
-    $rows = batch_import::parse($path);
+    try {
+        // The whole file is checked before anything changes (tool_flexaccess #16); a refused file leaves
+        // the batch exactly as it was and is reported on the form, not as an error page.
+        $rows = batch_import::parse($path);
+    } catch (\moodle_exception $e) {
+        if ($e->module !== 'tool_flexaccess' || strpos($e->errorcode, 'batchimport') !== 0) {
+            throw $e;
+        }
+        $refused = get_string($e->errorcode, 'tool_flexaccess', $e->a);
+    }
+}
+if ($rows !== null) {
     // Small imports run inline; large ones are handed to an ad-hoc task so the request returns.
     $result = batch_import::convert_dispatch($id, $rows, $data->usernamerule, \core\di::get(\core\clock::class)->time());
 
@@ -96,6 +110,9 @@ if ($form->is_cancelled()) {
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('batchconvert', 'tool_flexaccess'));
 echo \tool_flexaccess\local\navigation::render_accesslist((int) $batch->courseid);
+if ($refused !== null) {
+    echo $OUTPUT->notification(s($refused), \core\output\notification::NOTIFY_ERROR);
+}
 echo html_writer::tag('p', get_string('batchconvert_intro', 'tool_flexaccess'));
 $form->display();
 echo $OUTPUT->footer();

@@ -6,8 +6,9 @@ moodle-tool_flexaccess
 FlexAccess administration is the operator's view of the FlexAccess plugin set: account overview, mail queue, policies, invitations, campaigns and printable anonymous access lists.
 
 FlexAccess is not a single plugin but a set of four that work as one system. They are released
-together, carry the same version number and declare each other as dependencies, so they can only be
-installed and updated as a set.
+together, carry the same version number and declare their dependencies (tool and mod require auth and enrol;
+enrol requires auth), so they can only be installed and updated as a set. They are uninstalled in the reverse order:
+tool and mod, then enrol, then auth (Moodle removes a plugin only when nothing on disk still requires it).
 
 * **auth_flexaccess** provides the identity layer: it creates the temporary accounts, converts them into permanent ones, issues one-time login links and runs the central, rate-limited mail queue that all four plugins send through.
 * **enrol_flexaccess** decides who may enter a course and how: it owns the access policy across site, category and course, enforces capacity, access windows, access keys and role or cohort restrictions.
@@ -28,7 +29,7 @@ Requirements
 This plugin requires Moodle 4.5 LTS up to Moodle 5.3 (tested on 4.5, 5.0, 5.2 and 5.3).
 
 It also requires the other FlexAccess plugins. All four are released together and must be installed
-in the same version (currently 1.2.0 / 2026102500):
+in the same version (currently 1.2.0 / 2026102502):
 
 * **auth_flexaccess (FlexAccess authentication)** - required dependency, declared in version.php\
   https://github.com/ralferlebach/moodle-auth_flexaccess
@@ -123,6 +124,12 @@ How this plugin works / Pitfalls
 An anonymous access list creates a set of generated accounts for one course. Small lists are provisioned immediately, larger ones in the background with a visible progress state. Each account is written only after it exists and is enrolled, so an interrupted run leaves a smaller but consistent list that a retry completes.
 
 Passwords are never stored in clear. Issuing the credentials therefore rotates every password and produces one package - spreadsheet, printable list and login cards - from a single set. Because a second issue would invalidate the copies already handed out, the download is offered once; only a site administrator can issue again, and is warned about the consequence.
+
+The package is built and checked completely before a single password changes: the confirmation page says how many accounts the package contains and which are left out (personalised accounts keep their password; accounts that are no longer batch accounts are named). All files are generated from one credential set, every write and the archive are verified, and only then are all passwords changed together, in one transaction. A repeated or concurrent submission, or a batch that changed after the confirmation, is refused with nothing changed. Each issue is logged (event "FlexAccess batch credentials issued", without any credential). A package that is lost after the issue - for example an interrupted download - is replaced by a confirmed reissue.
+
+**Import of a filled list.** The import reads the export layout only: one worksheet, at most 2000 records (rows 2 to 2001). A file with a value further down, or a row with data but no username, is refused with the row number, and nothing is imported - no record is dropped silently. The package is checked before it is loaded (unpacked size, number of rows and cells), so a highly compressed or inflated file cannot exhaust the server.
+
+**Changing actions are POST only.** Every action that changes data (recovery, resending a set-password link, merge review and LTI bindings) is accepted only as a POST with a valid session key; the same request as GET or HEAD changes nothing.
 
 The login cards are laid out so the sheet can be cut: the gap between two cards is twice the page margin, so halving the sheet and halving again leaves every card with the same border. A free text supplied when the list is requested is printed on each card.
 

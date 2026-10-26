@@ -63,6 +63,8 @@ if ($snapshot === null || ($scope !== null && !$snapshot->enrolments && !$snapsh
 }
 
 if ($action !== '') {
+    // Resending queues mail and credential tokens: POST only, then sesskey (tool #14).
+    \tool_flexaccess\local\request::require_post();
     require_sesskey();
     if ($action === 'resendsetpassword') {
         // A credential for a permanent identity: a site-level right, never a course one.
@@ -143,7 +145,7 @@ if (
     )
 ) {
     $buttons[] = $OUTPUT->single_button(
-        new moodle_url($pageurl, ['action' => 'resendverification', 'sesskey' => sesskey()]),
+        new moodle_url($pageurl, ['action' => 'resendverification']),
         get_string('resendverification', 'tool_flexaccess')
     );
 }
@@ -152,7 +154,7 @@ if (
         && has_capability('tool/flexaccess:convertaccounts', context_system::instance())
 ) {
     $buttons[] = $OUTPUT->single_button(
-        new moodle_url($pageurl, ['action' => 'resendsetpassword', 'sesskey' => sesskey()]),
+        new moodle_url($pageurl, ['action' => 'resendsetpassword']),
         get_string('resendsetpassword', 'tool_flexaccess')
     );
 }

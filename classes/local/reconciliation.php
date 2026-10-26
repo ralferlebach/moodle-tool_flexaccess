@@ -107,6 +107,9 @@ final class reconciliation {
 
     /** Accounts per batch. */
     public const BATCH = 200;
+
+    /** Rows per statement of the set-based orphan pass (tool_flexaccess #17). */
+    public const CHUNK = 500;
     /** Seconds the synchronous upgrade pass may take before handing over to the ad-hoc task. */
     private const UPGRADE_TIME = 60;
     /** Config key of the persisted run state. */
@@ -463,8 +466,10 @@ final class reconciliation {
             if (!$userids) {
                 break;
             }
+            // The review cases of the whole batch in one query, not one query per account (tool_flexaccess #17).
+            $cases = self::cases_by_user($userids);
             foreach (self::inspect_users($userids, $now) as $snapshot) {
-                $result = self::process($snapshot, self::MODE_REPAIR, $state->source, $now);
+                $result = self::process($snapshot, self::MODE_REPAIR, $state->source, $now, $cases[$snapshot->userid] ?? []);
                 $state->checked++;
                 if ($result->repairs) {
                     $state->repairedaccounts++;
@@ -477,7 +482,10 @@ final class reconciliation {
         } while ($watch->within($started, $timelimit));
 
         if (!\auth_flexaccess\api::list_account_userids($state->cursor, 1)) {
-            self::record_orphan_restrictions($now);
+            // Only a complete scan reaches this point; a run stopped by its time limit stays 'running', resolves
+            // nothing and continues later. A failure inside the orphan pass leaves the run 'running' as well, and
+            // the next run repeats the pass, which only writes what is still missing.
+            $state->orphans = (object) self::record_orphan_restrictions($now);
             $state->status = 'done';
             $state->finished = $now;
             $state->lastfullscan = $now;
@@ -574,9 +582,16 @@ final class reconciliation {
      * @param string $mode Mode.
      * @param string $source Source.
      * @param int $now Current time.
+     * @param array|null $cases The user's stored review cases (id, code, status), if already loaded.
      * @return \stdClass ->repairs, ->reviews, ->changed.
      */
-    private static function process(\stdClass $snapshot, string $mode, string $source, int $now): \stdClass {
+    private static function process(
+        \stdClass $snapshot,
+        string $mode,
+        string $source,
+        int $now,
+        ?array $cases = null
+    ): \stdClass {
         global $DB;
         $verdict = self::evaluate($snapshot);
         $result = (object) ['repairs' => $verdict['repairs'], 'reviews' => $verdict['reviews'], 'changed' => false];
@@ -598,7 +613,7 @@ final class reconciliation {
                 $verdict = self::evaluate($snapshot);
             }
         }
-        self::store_cases($userid, $verdict['reviews'], $now);
+        self::store_cases($userid, $verdict['reviews'], $now, $cases);
         $transaction->allow_commit();
         $result->repairs = array_values(array_unique($applied));
         $result->reviews = $verdict['reviews'];
@@ -676,32 +691,106 @@ final class reconciliation {
     }
 
     /**
-     * Record users holding the restriction role without any FlexAccess account as review cases.
+     * Record users holding the restriction role without any FlexAccess account as review cases, set-based.
+     *
+     * A fixed number of reads regardless of the number of orphans (the complete orphan list and the existing
+     * orphan cases), and writes in chunks of CHUNK rows: new cases in bulk inserts, reopened and resolved
+     * cases with one statement per chunk that sets status and time together. Nothing is written for a case
+     * that is already in the right state, so a repeated pass writes nothing; a pass interrupted between
+     * chunks leaves consistent rows and is completed by the next one (tool_flexaccess #17).
+     *
+     * Called only after a complete scan: a case may only be resolved when a full check no longer finds it,
+     * not because it fell off the end of a limited result set.
      *
      * @param int $now Current time.
-     * @return void
+     * @param callable|null $afterchunk Called after every written chunk (fault-injection seam for tests).
+     * @return array{opened:int, reopened:int, resolved:int}
      */
-    private static function record_orphan_restrictions(int $now): void {
+    public static function record_orphan_restrictions(int $now, ?callable $afterchunk = null): array {
         global $DB;
-        // Complete list, never a truncated scan: a case may only be resolved when a full check no
-        // longer finds it, not because it fell off the end of a limited result set.
         $orphans = array_fill_keys(\auth_flexaccess\api::find_orphan_restriction_userids(), true);
-        foreach (array_keys($orphans) as $userid) {
-            self::store_cases($userid, [self::REVIEW_ORPHAN_RESTRICTION], $now);
+        $cases = [];
+        $rs = $DB->get_recordset(self::CASES, ['code' => self::REVIEW_ORPHAN_RESTRICTION], '', 'id, userid, status');
+        foreach ($rs as $row) {
+            $cases[(int) $row->userid] = $row;
         }
-        // Orphan cases whose restriction is gone are resolved.
-        $open = $DB->get_fieldset_select(
-            self::CASES,
-            'userid',
-            "code = :c AND status = 'open'",
-            ['c' => self::REVIEW_ORPHAN_RESTRICTION]
-        );
-        foreach ($open as $userid) {
-            if (!isset($orphans[(int) $userid])) {
-                $DB->set_field(self::CASES, 'status', 'resolved', ['userid' => $userid, 'code' => self::REVIEW_ORPHAN_RESTRICTION]);
-                $DB->set_field(self::CASES, 'timemodified', $now, ['userid' => $userid, 'code' => self::REVIEW_ORPHAN_RESTRICTION]);
+        $rs->close();
+
+        $insert = [];
+        $reopen = [];
+        foreach (array_keys($orphans) as $userid) {
+            if (!isset($cases[$userid])) {
+                $insert[] = $userid;
+            } else if ($cases[$userid]->status !== 'open') {
+                $reopen[] = (int) $cases[$userid]->id;
             }
         }
+        $resolve = [];
+        foreach ($cases as $userid => $row) {
+            if ($row->status === 'open' && !isset($orphans[$userid])) {
+                $resolve[] = (int) $row->id;
+            }
+        }
+
+        foreach (array_chunk($insert, self::CHUNK) as $chunk) {
+            $DB->insert_records(self::CASES, array_map(static fn(int $userid): array => [
+                'userid' => $userid,
+                'code' => self::REVIEW_ORPHAN_RESTRICTION,
+                'status' => 'open',
+                'timecreated' => $now,
+                'timemodified' => $now,
+            ], $chunk));
+            if ($afterchunk) {
+                $afterchunk();
+            }
+        }
+        self::set_case_status($reopen, 'open', $now, $afterchunk);
+        self::set_case_status($resolve, 'resolved', $now, $afterchunk);
+        return ['opened' => count($insert), 'reopened' => count($reopen), 'resolved' => count($resolve)];
+    }
+
+    /**
+     * Set status and time of review cases together, one statement per chunk.
+     *
+     * @param int[] $ids Case ids.
+     * @param string $status open or resolved.
+     * @param int $now Current time.
+     * @param callable|null $afterchunk Called after every chunk.
+     * @return void
+     */
+    private static function set_case_status(array $ids, string $status, int $now, ?callable $afterchunk): void {
+        global $DB;
+        foreach (array_chunk($ids, self::CHUNK) as $chunk) {
+            [$insql, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED, 'case');
+            $DB->execute(
+                "UPDATE {" . self::CASES . "} SET status = :status, timemodified = :now WHERE id $insql",
+                $params + ['status' => $status, 'now' => $now]
+            );
+            if ($afterchunk) {
+                $afterchunk();
+            }
+        }
+    }
+
+    /**
+     * The stored review cases of a set of users, grouped by user, in one query.
+     *
+     * @param int[] $userids Users.
+     * @return array<int, array> userid => list of (id, code, status).
+     */
+    private static function cases_by_user(array $userids): array {
+        global $DB;
+        if (!$userids) {
+            return [];
+        }
+        [$insql, $params] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+        $grouped = array_fill_keys(array_map('intval', $userids), []);
+        $rs = $DB->get_recordset_select(self::CASES, "userid $insql", $params, '', 'id, userid, code, status');
+        foreach ($rs as $row) {
+            $grouped[(int) $row->userid][] = $row;
+        }
+        $rs->close();
+        return $grouped;
     }
 
     /**
@@ -710,11 +799,12 @@ final class reconciliation {
      * @param int $userid User id.
      * @param string[] $reviews Current review codes.
      * @param int $now Current time.
+     * @param array|null $existing The user's stored cases (id, code, status), if already loaded.
      * @return void
      */
-    private static function store_cases(int $userid, array $reviews, int $now): void {
+    private static function store_cases(int $userid, array $reviews, int $now, ?array $existing = null): void {
         global $DB;
-        $existing = $DB->get_records(self::CASES, ['userid' => $userid], '', 'id, code, status');
+        $existing = $existing ?? $DB->get_records(self::CASES, ['userid' => $userid], '', 'id, code, status');
         $bycode = [];
         foreach ($existing as $row) {
             $bycode[$row->code] = $row;

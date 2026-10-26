@@ -33,7 +33,7 @@ const http = require('http');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { test, expect } = require('@playwright/test');
-const { loginAs } = require('./helpers');
+const { loginAs, freshSession } = require('./helpers');
 
 const MANAGER_USER = process.env.FLEXACCESS_MANAGER_USER;
 const MANAGER_PASS = process.env.FLEXACCESS_MANAGER_PASS;
@@ -122,7 +122,7 @@ test.describe('Account consolidation (auth_flexaccess #13)', () => {
     expect(Number(mergeCli('grade', E.FLEXACCESS_MERGE_GRADEITEM_ID, keep).finalgrade)).toBe(66);
 
     // The person signs in with the surviving local password and reaches the course of the removed account.
-    await page.context().clearCookies();
+    await freshSession(page);
     await loginAs(page, 'mergekeep', E.FLEXACCESS_MERGE_KEEP_PASS);
     const course = await page.goto(`/course/view.php?id=${E.FLEXACCESS_MERGE_COURSE_ID}`);
     expect(course.status()).toBe(200);
@@ -178,6 +178,37 @@ async function loginWithProvider(page) {
   await page.getByRole('link', { name: process.env.FLEXACCESS_OAUTH_ISSUER }).first().click();
   await page.waitForLoadState('domcontentloaded');
   await expect(page).not.toHaveURL(/\/login\/index\.php/);
+}
+
+for (const kind of ['flex', 'manual']) {
+  test.describe(`Two permanent accounts (${kind} into FlexAccess, auth_flexaccess #13)`, () => {
+    const E = process.env;
+    test.skip(!MANAGER_USER || E.FLEXACCESS_MERGEUSERS !== '1', 'Fixture or tool_mergeusers missing.');
+
+    test(`${kind} into permanent FlexAccess: the kept password reaches both courses, both grades stay`, async ({ page }) => {
+      const pair = mergeCli('durablepair', kind);
+      // No merge without an ownership proof, then the approval and the real merge through tool_mergeusers.
+      expect(mergeCli('merge', pair.to, pair.from).success).toBe(false);
+      expect(mergeCli('approve', pair.from, pair.to).approved).toBe(true);
+      const merged = mergeCli('merge', pair.to, pair.from);
+      expect(merged.success).toBe(true);
+      expect(merged.status).toBe('reconciled');
+      expect(Number(mergeCli('grade', pair.toitem, pair.to).finalgrade)).toBe(70);
+      expect(Number(mergeCli('grade', pair.fromitem, pair.to).finalgrade)).toBe(55);
+
+      await freshSession(page);
+      await loginAs(page, pair.tousername, pair.password);
+      for (const course of [pair.tocourse, pair.fromcourse]) {
+        const response = await page.goto(`/course/view.php?id=${course}`);
+        expect(response.status()).toBe(200);
+        await expect(page).not.toHaveURL(/enrol\/index\.php|login\/index\.php/);
+      }
+      // The removed account's own password no longer logs anybody in.
+      await freshSession(page);
+      await loginAs(page, pair.fromusername, 'Other-Pass!1');
+      await expect(page).toHaveURL(/login\/index\.php/);
+    });
+  });
 }
 
 test.describe('Ownership proof and institutional login (auth_flexaccess #13)', () => {

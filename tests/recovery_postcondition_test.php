@@ -163,7 +163,13 @@ final class recovery_postcondition_test extends \advanced_testcase {
     public function test_missing_participant_role(): void {
         $userid = $this->member(ENROL_USER_ACTIVE);
         $context = \context_course::instance((int) $this->course->id);
-        role_unassign(\enrol_flexaccess\local\participant_role::get_id(), $userid, $context->id);
+        // The enrolment's own (protected) assignment, as enrol_flexaccess makes it since 2026102502 (enrol #15).
+        role_unassign_all([
+            'roleid' => \enrol_flexaccess\local\participant_role::get_id(),
+            'userid' => $userid,
+            'contextid' => $context->id,
+            'component' => 'enrol_flexaccess',
+        ]);
 
         $result = recovery::recover($userid, (int) $this->course->id);
         $this->assertSame(recovery::EFFECTIVE_ACCESS_NOT_RESTORED, $result->overall);

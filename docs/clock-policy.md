@@ -1,4 +1,4 @@
-# Zeit in der FlexAccess-Familie (Clock-API, Stand 2026102500)
+# Zeit in der FlexAccess-Familie (Clock-API, Stand 2026102501)
 
 Gilt für auth, enrol, mod und tool_flexaccess: Produktionscode, CLI-Skripte, PHPUnit-Tests, Behat-Kontexte,
 Playwright-Fixtures (`seed.php`, `merge_cli.php`, `probe.php`, LTI-`cli.php`) und Last-Skripte.
@@ -38,7 +38,7 @@ Zeile; ungenutzte Einträge lassen das Gate ebenfalls fehlschlagen.
 | tool | `classes/local/stopwatch.php` | `hrtime()` (2×) | monotone Dauer, kein Zeitpunkt |
 | enrol | `tests/core_time_semantics_test.php` | `time()` (1 Helfer) | Moodle-Core liest für seine Einschreibefenster selbst `time()` (`round(time(), -2)`, `is_enrolled()`); der Abgleich mit Core braucht dieselbe Quelle. Die eingefrorene Uhr wird vor jedem Vergleich auf diesen Wert gesetzt. |
 
-Sonst gibt es keine direkten Abfragen der Wanduhr in der Familie (Stand 2026102500: 0 in Produktion, Tests,
+Sonst gibt es keine direkten Abfragen der Wanduhr in der Familie (Stand 2026102501: 0 in Produktion, Tests,
 CLI und Fixtures außerhalb dieser Ausnahmen).
 
 ## Stabilität

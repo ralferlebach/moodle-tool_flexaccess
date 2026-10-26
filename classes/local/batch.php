@@ -703,27 +703,34 @@ final class batch {
     /**
      * Reset every still-managed member's password to a fresh value and return the new credentials.
      *
-     * This is the secure way to issue login sheets: plain passwords are never persisted, so issuing
-     * always rolls new passwords. Members that have been personalised/converted are skipped.
+     * All or nothing (tool_flexaccess #15): the passwords change in one transaction, and a member that
+     * cannot be changed aborts the whole reset instead of being left out silently. Personalised members
+     * keep their password by design; a member that is no longer a batch placeholder (deleted, or changed
+     * outside the batch) is refused. The credential package of a batch is issued through
+     * {@see credential_issue}, which also builds and verifies the files before anything changes.
      *
      * @param int $batchid Batch id.
      * @param int $passwordlength Password length.
      * @return array<string,string> username => new plain password, alphabetical by username.
+     * @throws \moodle_exception batchissuepasswordfailed, with nothing changed.
      */
     public static function reset_credentials(int $batchid, int $passwordlength = 10): array {
-        $credentials = [];
-        foreach (self::members($batchid) as $member) {
-            // Never rotate the password of a member that has left batch management (personalised /
-            // converted to a permanent account): doing so would be a credential takeover.
-            // The stored flag is the authority; set_account_password() enforces the same rule again.
-            if (!empty($member->converted)) {
-                continue;
-            }
-            $password = self::generate_password($passwordlength);
-            if (\auth_flexaccess\api::set_account_password((int) $member->userid, $password)) {
-                $credentials[$member->username] = $password;
-            }
+        global $DB;
+        $plan = (new credential_issue())->plan($batchid);
+        if ($plan->unavailable) {
+            throw new \moodle_exception('batchissuepasswordfailed', 'tool_flexaccess', '', s(implode(', ', $plan->unavailable)));
         }
+        $credentials = [];
+        $transaction = $DB->start_delegated_transaction();
+        foreach ($plan->issue as $username => $userid) {
+            $password = self::generate_password($passwordlength);
+            // The stored flag and set_account_password() both keep personalised accounts out.
+            if (!\auth_flexaccess\api::set_account_password($userid, $password)) {
+                $transaction->rollback(new \moodle_exception('batchissuepasswordfailed', 'tool_flexaccess', '', s($username)));
+            }
+            $credentials[$username] = $password;
+        }
+        $transaction->allow_commit();
         return $credentials;
     }
 
