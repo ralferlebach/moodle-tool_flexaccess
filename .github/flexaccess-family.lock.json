@@ -1,5 +1,5 @@
 {
-  "family_version": 2026102600,
+  "family_version": 2026102601,
   "mergeusers": {
     "repo": "jpahullo/moodle-tool_mergeusers",
     "sha": "61c13f0484986ba78898b1760464adfe2eb97aae",
@@ -7,28 +7,28 @@
   },
   "plugins": {
     "auth_flexaccess": {
-      "content": "8a9bccd077eb830dfbaafc3aed5a83db984352687f36c437c7cdbbc12ee63115",
+      "content": "371f11c3340be1aded29d18836c9e61c235c5f00f6fc52fb8b92a0fff1f7d317",
       "ref": "development",
       "repo": "ralferlebach/moodle-auth_flexaccess",
-      "version": 2026102600
+      "version": 2026102601
     },
     "enrol_flexaccess": {
-      "content": "bc69eef129e461470b6ad1214628eb629ed50d1e231de828cb3c56b014b47036",
+      "content": "4c8a584114cc2a349ef6aafe8aa6751ee4544c3812b209229add4558913cf8a3",
       "ref": "development",
       "repo": "ralferlebach/moodle-enrol_flexaccess",
-      "version": 2026102600
+      "version": 2026102601
     },
     "mod_flexaccess": {
-      "content": "97c57aaabab3933af278e129f6d03495f991437e3f1ca5b80586a1343631e350",
+      "content": "01c448c3a2a36a27dc2a278d9e0eb0ad5da2dd0d848a5502d0d28e2561a0d392",
       "ref": "development",
       "repo": "ralferlebach/moodle-mod_flexaccess",
-      "version": 2026102600
+      "version": 2026102601
     },
     "tool_flexaccess": {
-      "content": "b961d9e7576771b943103945186dc0d50891c84f2da276f0f2b580cf3fd4fb2a",
+      "content": "6d658230746795605828ef547f080fc1c398391b9cc3ede9bbdb6900fd0435e4",
       "repo": "ralferlebach/moodle-tool_flexaccess",
       "sha": "SELF",
-      "version": 2026102600
+      "version": 2026102601
     }
   },
   "schema": 1,

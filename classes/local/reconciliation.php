@@ -108,8 +108,15 @@ final class reconciliation {
     /** Accounts per batch. */
     public const BATCH = 200;
 
-    /** Rows per statement of the set-based orphan pass (tool_flexaccess #17). */
-    public const CHUNK = 500;
+    /**
+     * User ids an inspection report lists per rule (tool_flexaccess #17): the counts are exact, the lists are
+     * bounded, so the report's memory does not grow with the number of affected accounts.
+     */
+    public const REPORT_IDS = 200;
+
+    /** Orphans per keyset block when new review cases are added (bounds PHP memory, tool_flexaccess #17). */
+    public const ORPHAN_CHUNK = 1000;
+
     /** Seconds the synchronous upgrade pass may take before handing over to the ad-hoc task. */
     private const UPGRADE_TIME = 60;
     /** Config key of the persisted run state. */
@@ -691,85 +698,85 @@ final class reconciliation {
     }
 
     /**
-     * Record users holding the restriction role without any FlexAccess account as review cases, set-based.
+     * Record users holding the restriction role without any FlexAccess account as review cases, with bounded memory.
      *
-     * A fixed number of reads regardless of the number of orphans (the complete orphan list and the existing
-     * orphan cases), and writes in chunks of CHUNK rows: new cases in bulk inserts, reopened and resolved
-     * cases with one statement per chunk that sets status and time together. Nothing is written for a case
-     * that is already in the right state, so a repeated pass writes nothing; a pass interrupted between
-     * chunks leaves consistent rows and is completed by the next one (tool_flexaccess #17).
+     * Bounded memory (tool_flexaccess #17, decision D4): neither all orphans nor all cases are loaded into PHP. New
+     * cases are added in keyset blocks of ORPHAN_CHUNK orphans (one read of the next block, one existence check, one
+     * bulk insert), so PHP holds at most one block. Reopening and resolving are one set-based UPDATE each, with a
+     * correlated orphan predicate from auth_flexaccess that costs index lookups per case; each is preceded by a COUNT.
+     * Status and time are always set together; a repeated pass writes nothing. Each block and each UPDATE is atomic;
+     * a pass interrupted in between leaves consistent rows, and the next pass completes the rest. Capacity, budgets
+     * and the behaviour above the tested volume: docs/reconciliation-capacity.md.
      *
-     * Called only after a complete scan: a case may only be resolved when a full check no longer finds it,
-     * not because it fell off the end of a limited result set.
+     * Why not one INSERT ... SELECT ... WHERE NOT EXISTS: PostgreSQL checks each row against the index of the table it
+     * is filling, which grows during the statement - quadratic (measured: 10000 orphans 4 s, 100000 orphans 466 s).
+     *
+     * Called only after a complete scan: a case may only be resolved when a full check no longer finds it.
      *
      * @param int $now Current time.
-     * @param callable|null $afterchunk Called after every written chunk (fault-injection seam for tests).
+     * @param callable|null $afterstep Called after every write with 'opened', 'reopened' or 'resolved' (fault injection
+     *     seam for tests).
      * @return array{opened:int, reopened:int, resolved:int}
      */
-    public static function record_orphan_restrictions(int $now, ?callable $afterchunk = null): array {
+    public static function record_orphan_restrictions(int $now, ?callable $afterstep = null): array {
         global $DB;
-        $orphans = array_fill_keys(\auth_flexaccess\api::find_orphan_restriction_userids(), true);
-        $cases = [];
-        $rs = $DB->get_recordset(self::CASES, ['code' => self::REVIEW_ORPHAN_RESTRICTION], '', 'id, userid, status');
-        foreach ($rs as $row) {
-            $cases[(int) $row->userid] = $row;
-        }
-        $rs->close();
+        $code = self::REVIEW_ORPHAN_RESTRICTION;
+        $now = (int) $now;
+        $cases = '{' . self::CASES . '}';
+        $result = ['opened' => 0, 'reopened' => 0, 'resolved' => 0];
 
-        $insert = [];
-        $reopen = [];
-        foreach (array_keys($orphans) as $userid) {
-            if (!isset($cases[$userid])) {
-                $insert[] = $userid;
-            } else if ($cases[$userid]->status !== 'open') {
-                $reopen[] = (int) $cases[$userid]->id;
+        // Orphans without a case: insert them, one keyset block at a time.
+        $after = 0;
+        do {
+            $block = \auth_flexaccess\api::find_orphan_restriction_userids(self::ORPHAN_CHUNK, $after);
+            if (!$block) {
+                break;
             }
-        }
-        $resolve = [];
-        foreach ($cases as $userid => $row) {
-            if ($row->status === 'open' && !isset($orphans[$userid])) {
-                $resolve[] = (int) $row->id;
+            [$insql, $inparams] = $DB->get_in_or_equal($block, SQL_PARAMS_NAMED, 'blk');
+            $known = array_map('intval', $DB->get_fieldset_select(
+                self::CASES,
+                'userid',
+                "code = :code AND userid $insql",
+                $inparams + ['code' => $code]
+            ));
+            $missing = array_values(array_diff($block, $known));
+            if ($missing) {
+                $DB->insert_records(self::CASES, array_map(static fn(int $userid): array => [
+                    'userid' => $userid, 'code' => $code, 'status' => 'open', 'timecreated' => $now, 'timemodified' => $now,
+                ], $missing));
+                $result['opened'] += count($missing);
+                if ($afterstep) {
+                    $afterstep('opened');
+                }
+            }
+            $after = (int) end($block);
+        } while (count($block) === self::ORPHAN_CHUNK);
+
+        // Cases of orphans that are not open (resolved earlier): reopen. Each case is checked with a correlated
+        // predicate that costs index lookups only; NOT IN or EXISTS against the DISTINCT subquery let PostgreSQL
+        // re-evaluate the subquery per row (measured: 10000 orphans 7.7 s, 100000 orphans 745 s).
+        [$isorphan, $params] = \auth_flexaccess\api::orphan_restriction_exists_sql("$cases.userid", 'orx')
+            ?? ['1 = 0', []];
+        $params['code'] = $code;
+        $reopen = "code = :code AND status <> 'open' AND $isorphan";
+        $result['reopened'] = $DB->count_records_select(self::CASES, $reopen, $params);
+        if ($result['reopened'] > 0) {
+            $DB->execute("UPDATE $cases SET status = 'open', timemodified = :now WHERE $reopen", $params + ['now' => $now]);
+            if ($afterstep) {
+                $afterstep('reopened');
             }
         }
 
-        foreach (array_chunk($insert, self::CHUNK) as $chunk) {
-            $DB->insert_records(self::CASES, array_map(static fn(int $userid): array => [
-                'userid' => $userid,
-                'code' => self::REVIEW_ORPHAN_RESTRICTION,
-                'status' => 'open',
-                'timecreated' => $now,
-                'timemodified' => $now,
-            ], $chunk));
-            if ($afterchunk) {
-                $afterchunk();
+        // Open cases of users who are no longer orphans: resolve.
+        $resolve = "code = :code AND status = 'open' AND NOT $isorphan";
+        $result['resolved'] = $DB->count_records_select(self::CASES, $resolve, $params);
+        if ($result['resolved'] > 0) {
+            $DB->execute("UPDATE $cases SET status = 'resolved', timemodified = :now WHERE $resolve", $params + ['now' => $now]);
+            if ($afterstep) {
+                $afterstep('resolved');
             }
         }
-        self::set_case_status($reopen, 'open', $now, $afterchunk);
-        self::set_case_status($resolve, 'resolved', $now, $afterchunk);
-        return ['opened' => count($insert), 'reopened' => count($reopen), 'resolved' => count($resolve)];
-    }
-
-    /**
-     * Set status and time of review cases together, one statement per chunk.
-     *
-     * @param int[] $ids Case ids.
-     * @param string $status open or resolved.
-     * @param int $now Current time.
-     * @param callable|null $afterchunk Called after every chunk.
-     * @return void
-     */
-    private static function set_case_status(array $ids, string $status, int $now, ?callable $afterchunk): void {
-        global $DB;
-        foreach (array_chunk($ids, self::CHUNK) as $chunk) {
-            [$insql, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED, 'case');
-            $DB->execute(
-                "UPDATE {" . self::CASES . "} SET status = :status, timemodified = :now WHERE id $insql",
-                $params + ['status' => $status, 'now' => $now]
-            );
-            if ($afterchunk) {
-                $afterchunk();
-            }
-        }
+        return $result;
     }
 
     /**
@@ -831,12 +838,17 @@ final class reconciliation {
      *
      * @param int $now Current time.
      * @param int $timelimit Seconds (0 = unlimited).
-     * @return \stdClass ->checked, ->complete, ->repairs (rule => user ids), ->reviews (code => user ids).
+     * @return \stdClass ->checked, ->complete, ->repairs (rule => at most REPORT_IDS user ids), ->reviews (code => at
+     *     most REPORT_IDS user ids), ->repaircounts / ->reviewcounts (rule or code => exact number), ->affected
+     *     (accounts with at least one repair).
      */
     private static function inspect_all(int $now, int $timelimit): \stdClass {
         $watch = stopwatch::instance();
         $started = $watch->start();
-        $report = (object) ['checked' => 0, 'complete' => false, 'repairs' => [], 'reviews' => []];
+        $report = (object) [
+            'checked' => 0, 'complete' => false, 'repairs' => [], 'reviews' => [],
+            'repaircounts' => [], 'reviewcounts' => [], 'affected' => 0,
+        ];
         $cursor = 0;
         do {
             $userids = \auth_flexaccess\api::list_account_userids($cursor, self::BATCH);
@@ -847,10 +859,13 @@ final class reconciliation {
             foreach (self::inspect_users($userids, $now) as $snapshot) {
                 $verdict = self::evaluate($snapshot);
                 foreach ($verdict['repairs'] as $rule) {
-                    $report->repairs[$rule][] = $snapshot->userid;
+                    self::report_add($report->repairs, $report->repaircounts, $rule, $snapshot->userid);
                 }
                 foreach ($verdict['reviews'] as $code) {
-                    $report->reviews[$code][] = $snapshot->userid;
+                    self::report_add($report->reviews, $report->reviewcounts, $code, $snapshot->userid);
+                }
+                if ($verdict['repairs']) {
+                    $report->affected++;
                 }
                 $report->checked++;
             }
@@ -859,12 +874,30 @@ final class reconciliation {
         $problems = array_diff(\enrol_flexaccess\api::role_model_problems(), ['participantsystemassigned']);
         if ($problems) {
             $report->repairs[self::RULE_ROLEMODEL][] = 0;
+            $report->repaircounts[self::RULE_ROLEMODEL] = 1;
         }
         $system = \enrol_flexaccess\api::find_role_mismatches(1)['systemparticipant'];
         if ($system > 0) {
-            $report->repairs[self::RULE_SYSTEMPARTICIPANT] = array_fill(0, $system, 0);
+            $report->repairs[self::RULE_SYSTEMPARTICIPANT] = array_fill(0, min($system, self::REPORT_IDS), 0);
+            $report->repaircounts[self::RULE_SYSTEMPARTICIPANT] = $system;
         }
         return $report;
+    }
+
+    /**
+     * Count one finding and keep its user id while the list is below REPORT_IDS.
+     *
+     * @param array $lists Lists by key.
+     * @param array $counts Counts by key.
+     * @param string $key Rule or code.
+     * @param int $userid User.
+     * @return void
+     */
+    private static function report_add(array &$lists, array &$counts, string $key, int $userid): void {
+        $counts[$key] = ($counts[$key] ?? 0) + 1;
+        if (count($lists[$key] ?? []) < self::REPORT_IDS) {
+            $lists[$key][] = $userid;
+        }
     }
 
     /**

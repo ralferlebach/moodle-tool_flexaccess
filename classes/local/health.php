@@ -28,6 +28,9 @@ namespace tool_flexaccess\local;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 final class health {
+    /** Inconsistencies the status page examines per view at most (tool_flexaccess #17). */
+    public const REPAIRABLE_LIMIT = 5000;
+
     /** Status: fine. */
     public const OK = 'ok';
     /** Status: informational. */
@@ -486,11 +489,15 @@ final class health {
             'roles' => $state->rolefixes,
             'core' => $state->corefixes,
         ]));
-        $repairable = self::auto_repairable_count($now);
+        $repairable = self::auto_repairable_count($now, $truncated);
         $items[] = self::item(
             'reconcile_repairable',
             $repairable > 0 ? self::WARNING : self::OK,
-            get_string('reconcile_repairable', 'tool_flexaccess', $repairable),
+            get_string(
+                'reconcile_repairable',
+                'tool_flexaccess',
+                $truncated ? get_string('atleast', 'tool_flexaccess', $repairable) : $repairable
+            ),
             '',
             $repairable > 0 ? self::REPAIR_RECONCILE : null,
             $repairable
@@ -518,16 +525,23 @@ final class health {
     /**
      * Number of accounts the safe reconciliation would still change (target: 0).
      *
+     * Bounded (tool_flexaccess #17): at most REPAIRABLE_LIMIT inconsistencies are examined per page view; beyond that
+     * the number is a lower bound and the status says so ("at least"). The reconciliation itself has no such limit.
+     *
      * @param int $now Current time.
+     * @param bool|null $truncated Set to whether the limit was reached (the number is then a lower bound).
      * @return int
      */
-    public static function auto_repairable_count(int $now): int {
+    public static function auto_repairable_count(int $now, ?bool &$truncated = null): int {
         $userids = [];
-        foreach (\auth_flexaccess\api::find_state_mismatches($now, 0) as $m) {
+        $mismatches = \auth_flexaccess\api::find_state_mismatches($now, self::REPAIRABLE_LIMIT);
+        $truncated = count($mismatches) >= self::REPAIRABLE_LIMIT;
+        foreach ($mismatches as $m) {
             if (in_array($m->code, self::RECONCILE_CODES, true)) {
                 $userids[] = (int) $m->userid;
             }
         }
+        unset($mismatches);
         $count = 0;
         foreach (array_chunk(array_values(array_unique($userids)), reconciliation::BATCH) as $chunk) {
             foreach (reconciliation::inspect_users($chunk, $now) as $snapshot) {
@@ -544,11 +558,12 @@ final class health {
      *
      * @param string $repair Repair code.
      * @param int|null $now Current time.
-     * @return array ->userids (int[]), ->problems (string[] for the role repair).
+     * @return array ->userids (int[], at most reconciliation::REPORT_IDS), ->total (exact number of affected accounts),
+     *     ->problems (string[] for the role repair), ->report (inspection report or null).
      */
     public static function preview(string $repair, ?int $now = null): array {
         if ($repair === self::REPAIR_ROLES) {
-            return ['userids' => [], 'problems' => \enrol_flexaccess\api::role_model_problems(), 'report' => null];
+            return ['userids' => [], 'total' => 0, 'problems' => \enrol_flexaccess\api::role_model_problems(), 'report' => null];
         }
         if ($repair === self::REPAIR_RECONCILE) {
             // Inspect only: exactly the rules the safe repair would apply, and the review cases.
@@ -557,13 +572,24 @@ final class health {
             foreach ($report->repairs as $ids) {
                 $userids = array_merge($userids, array_filter($ids));
             }
-            return ['userids' => array_values(array_unique($userids)), 'problems' => [], 'report' => $report];
+            $userids = array_values(array_unique($userids));
+            return [
+                'userids' => $userids,
+                'total' => max($report->affected, count($userids)),
+                'problems' => [],
+                'report' => $report,
+            ];
         }
-        $userids = [];
         if ($repair === self::REPAIR_ORPHAN) {
-            $userids = \auth_flexaccess\api::find_orphan_restriction_userids();
+            // A bounded list for the preview and the exact number from the database (tool_flexaccess #17).
+            return [
+                'userids' => \auth_flexaccess\api::find_orphan_restriction_userids(reconciliation::REPORT_IDS),
+                'total' => \auth_flexaccess\api::count_orphan_restrictions(),
+                'problems' => [],
+                'report' => null,
+            ];
         }
-        return ['userids' => array_values(array_unique($userids)), 'problems' => [], 'report' => null];
+        return ['userids' => [], 'total' => 0, 'problems' => [], 'report' => null];
     }
 
     /**
@@ -592,12 +618,21 @@ final class health {
             }
             $changed = (int) $state->repairedaccounts;
         } else if ($repair === self::REPAIR_ORPHAN) {
-            foreach (self::preview($repair, $now)['userids'] as $userid) {
-                if (\auth_flexaccess\api::repair_state_mismatch($userid, 'orphan_restriction')) {
-                    $changed++;
-                    $userids[] = $userid;
+            // In batches of reconciliation::BATCH, so memory does not grow with the number of orphans; a repaired
+            // orphan leaves the list, so the next batch starts with the remaining ones. Stops when a batch changes
+            // nothing (only orphans that cannot be repaired are left).
+            do {
+                $progress = false;
+                foreach (\auth_flexaccess\api::find_orphan_restriction_userids(reconciliation::BATCH) as $userid) {
+                    if (\auth_flexaccess\api::repair_state_mismatch($userid, 'orphan_restriction')) {
+                        $changed++;
+                        $progress = true;
+                        if (count($userids) < reconciliation::REPORT_IDS) {
+                            $userids[] = $userid;
+                        }
+                    }
                 }
-            }
+            } while ($progress);
         }
         \tool_flexaccess\event\health_repaired::create([
             'context' => \context_system::instance(),

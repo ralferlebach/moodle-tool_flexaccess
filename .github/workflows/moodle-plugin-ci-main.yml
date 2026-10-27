@@ -168,6 +168,14 @@ jobs:
       - name: Check upgrade savepoints
         if: ${{ always() }}
         run: set -o pipefail; moodle-plugin-ci savepoints 2>&1 | tee ci-logs/savepoints.log
+      - name: PDF text extraction for the credential package test (tool_flexaccess #18)
+        # credential_issue_test and batch-integrity.spec.js compare the PDFs of the package with the spreadsheet;
+        # without pdftotext they must fail, so the tool is installed and checked here, not assumed.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils
+          test -x /usr/bin/pdftotext || { echo "::error::pdftotext is not available"; exit 1; }
+          pdftotext -v 2>&1 | sed -n 1p
       - name: PHPUnit tests
         if: ${{ always() }}
         run: set -o pipefail; moodle-plugin-ci phpunit --fail-on-warning --testdox 2>&1 | tee ci-logs/phpunit.log
@@ -309,6 +317,14 @@ jobs:
           DB: pgsql
           MOODLE_BRANCH: MOODLE_405_STABLE
 
+      - name: PDF text extraction for the credential package test (tool_flexaccess #18)
+        # credential_issue_test and batch-integrity.spec.js compare the PDFs of the package with the spreadsheet;
+        # without pdftotext they must fail, so the tool is installed and checked here, not assumed.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils
+          test -x /usr/bin/pdftotext || { echo "::error::pdftotext is not available"; exit 1; }
+          pdftotext -v 2>&1 | sed -n 1p
       - name: Run PHPUnit with coverage
         run: |
           # Clover XML instead of --coverage-text: the text report covers the whole Moodle tree

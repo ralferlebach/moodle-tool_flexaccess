@@ -20,6 +20,8 @@
  * really gets back into the course, and names what still blocks access otherwise.
  */
 
+const path = require('path');
+const { execFileSync } = require('child_process');
 const { test, expect } = require('@playwright/test');
 const { loginAs, open } = require('./helpers');
 
@@ -92,5 +94,47 @@ test.describe('FlexAccess recovery postcondition', () => {
     await expect(body).toContainText(/FAPWCLOSED[^:]*: FlexAccess enrolment method disabled/);
     await expect(body.getByRole('link', { name: 'Resolve' }).first()).toHaveAttribute('href', /\/enrol\/instances\.php\?id=/);
     await expect(body).not.toContainText('Access restored:');
+  });
+
+  test('access expired and suspended, previewed, recovered: course and active-only lists at once', async ({ page, browser }) => {
+    // tool #10 / enrol #9: the whole path, starting from an active enrolment. FlexAccess enrolments are suspended by
+    // their lifecycle (end of the access window, expiry task) - Moodle's "Edit enrolment" page is not offered for them.
+    const cli = (...args) => JSON.parse(execFileSync('php', [path.join(__dirname, 'merge_cli.php'), ...args.map(String)],
+      { encoding: 'utf8' }).trim().split('\n').pop());
+    const person = cli('activeue', COURSE);
+    expect(person.status).toBe(0);
+    await loginAs(page, ADMIN_USER, ADMIN_PASS);
+
+    // Suspend: the access window ends and the expiry task runs.
+    expect(cli('expireue', person.ueid).status).toBe(1);
+    expect(cli('uestatus', person.ueid)).toEqual({ status: 1, activeparticipant: false, inactivelist: false });
+    // The person cannot open the course any more.
+    const before = await (await browser.newContext()).newPage();
+    await loginAs(before, person.username, person.password);
+    await before.goto(`/course/view.php?id=${COURSE}`);
+    await expect(before).not.toHaveURL(new RegExp(`/course/view\\.php\\?id=${COURSE}$`));
+    // Active-only lists (grader report with Moodle's default "show only active enrolments") no longer show the person.
+    await open(page, `/grade/report/grader/index.php?id=${COURSE}`);
+    await expect(page.locator('body')).not.toContainText(person.fullname);
+
+    // Preview, then recover.
+    await open(page, `/admin/tool/flexaccess/recover.php?userid=${person.id}&courseid=${COURSE}`);
+    await expect(page.locator('table')).toContainText(/Expected afterwards: course access effective if selected/);
+    await page.getByRole('checkbox', { name: /Reactivate/ }).check();
+    await page.getByRole('button', { name: 'Recover now' }).click();
+    await expect(page.locator('body')).toContainText('Access restored: account and course access are effective');
+
+    // At once, without cron: Core counts the person as active, the active-only list shows them ...
+    expect(cli('uestatus', person.ueid)).toEqual({ status: 0, activeparticipant: true, inactivelist: true });
+    await open(page, `/grade/report/grader/index.php?id=${COURSE}`);
+    await expect(page.locator('body')).toContainText(person.fullname);
+    // ... and the person opens the course directly.
+    const context = await browser.newContext();
+    const learner = await context.newPage();
+    await loginAs(learner, person.username, person.password);
+    const response = await learner.goto(`/course/view.php?id=${COURSE}`);
+    expect(response.status()).toBe(200);
+    await expect(learner).toHaveURL(new RegExp(`/course/view\\.php\\?id=${COURSE}`));
+    await context.close();
   });
 });

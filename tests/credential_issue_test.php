@@ -121,9 +121,24 @@ final class credential_issue_test extends \advanced_testcase {
     private function pdftext(string $content): string {
         $path = make_request_directory() . '/doc.pdf';
         file_put_contents($path, $content);
-        exec('pdftotext -layout ' . escapeshellarg($path) . ' - 2>/dev/null', $lines, $exit);
+        exec(escapeshellarg(self::pdftotext()) . ' -layout ' . escapeshellarg($path) . ' - 2>/dev/null', $lines, $exit);
         $this->assertSame(0, $exit);
         return implode("\n", $lines);
+    }
+
+    /**
+     * The pdftotext binary (poppler-utils). Its absence fails the test: the PDF content is part of the evidence
+     * (tool_flexaccess #18), so a missing tool must not turn into a green "incomplete".
+     *
+     * @return string Path.
+     */
+    private static function pdftotext(): string {
+        foreach (array_filter([getenv('PDFTOTEXT') ?: null, '/usr/bin/pdftotext', '/usr/local/bin/pdftotext']) as $path) {
+            if (is_executable($path)) {
+                return $path;
+            }
+        }
+        self::fail('pdftotext (poppler-utils) is required to compare the PDFs of the credential package; install it.');
     }
 
     public function test_the_package_holds_one_complete_consistent_credential_set(): void {
@@ -155,10 +170,7 @@ final class credential_issue_test extends \advanced_testcase {
             $this->assertTrue(validate_internal_user_password($user, $password), $username);
         }
 
-        // Both PDFs carry the same set.
-        if (!is_executable('/usr/bin/pdftotext')) {
-            $this->markTestIncomplete('pdftotext is not available; the PDF content was not compared.');
-        }
+        // Both PDFs carry the same set (fails if pdftotext is missing, see pdftotext()).
         foreach (['Issue-liste.pdf', 'Issue-kaertchen.pdf'] as $pdf) {
             $text = $this->pdftext($zip->getFromName($pdf));
             foreach ($credentials as $username => $password) {
@@ -173,8 +185,17 @@ final class credential_issue_test extends \advanced_testcase {
         $this->assertGreaterThan(0, $after['timeissued']);
         $this->assertSame($before['events'] + 1, $after['events']);
         $event = $DB->get_record('logstore_standard_log', ['eventname' => '\tool_flexaccess\event\batch_credentials_issued']);
+        // Nowhere in the log, the batch tables or the user records except as the password hash.
+        $stored = json_encode([
+            $DB->get_records('logstore_standard_log'),
+            $DB->get_records('tool_flexaccess_batch'),
+            $DB->get_records('tool_flexaccess_batch_member'),
+            $DB->get_records_list('user', 'username', array_keys($credentials), '', 'id, username, email, secret, description'),
+            $DB->get_records('config_plugins', ['plugin' => 'tool_flexaccess']),
+        ]);
         foreach ($credentials as $password) {
             $this->assertStringNotContainsString($password, $event->other);
+            $this->assertStringNotContainsString($password, $stored);
         }
     }
 

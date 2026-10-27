@@ -86,11 +86,14 @@ if ($repair !== '') {
         $table = new html_table();
         $table->head = [get_string('healthrepair', 'tool_flexaccess'), get_string('health_affected', 'tool_flexaccess', '')];
         foreach ($report->repairs as $rule => $ids) {
-            $table->data[] = [get_string('reconcile_rule_' . $rule, 'tool_flexaccess'), count($ids)];
+            $table->data[] = [
+                get_string('reconcile_rule_' . $rule, 'tool_flexaccess'),
+                $report->repaircounts[$rule] ?? count($ids),
+            ];
         }
         foreach ($report->reviews as $code => $ids) {
             $table->data[] = [get_string('reconcile_' . $code, 'tool_flexaccess') . ' (' .
-                get_string('reconcile_reviewonly', 'tool_flexaccess') . ')', count($ids)];
+                get_string('reconcile_reviewonly', 'tool_flexaccess') . ')', $report->reviewcounts[$code] ?? count($ids)];
         }
         if ($table->data) {
             echo html_writer::table($table);
@@ -110,7 +113,7 @@ if ($repair !== '') {
             );
         }
         // Only the list is shortened; the repair itself covers every affected account.
-        $hidden = count($preview['userids']) - count($users);
+        $hidden = ($preview['total'] ?? count($preview['userids'])) - count($users);
         if ($hidden > 0) {
             $items[] = get_string('healthpreviewmore', 'tool_flexaccess', $hidden);
         }

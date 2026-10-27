@@ -140,6 +140,14 @@ jobs:
           FAMILY_LOCK: ${{ needs.lock.outputs.lock }}
           DB: ${{ matrix.database }}
           MOODLE_BRANCH: ${{ matrix.moodle }}
+      - name: PDF text extraction for the credential package test (tool_flexaccess #18)
+        # credential_issue_test and batch-integrity.spec.js compare the PDFs of the package with the spreadsheet;
+        # without pdftotext they must fail, so the tool is installed and checked here, not assumed.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils
+          test -x /usr/bin/pdftotext || { echo "::error::pdftotext is not available"; exit 1; }
+          pdftotext -v 2>&1 | sed -n 1p
       - name: PHPUnit of all four plugins
         run: |
           cd moodle

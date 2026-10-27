@@ -61,6 +61,7 @@ $string['accounttype_authenticated'] = 'Authentifiziert';
 $string['accounttype_temporary'] = 'Temporär';
 $string['accounttypeauthenticated'] = 'Authentifizierte Nutzer';
 $string['accounttypetemporary'] = 'Temporäre Nutzer';
+$string['atleast'] = 'mindestens {$a}';
 $string['authunavailable'] = 'Das Plugin auth_flexaccess ist nicht installiert, daher sind keine Kontodaten verfügbar.';
 $string['batchaccounttype'] = 'Account-Typ';
 $string['batchaccounttype_help'] = 'Vorläufige Accounts sind eingeschränkt und laufen ab; dauerhafte Accounts sind vollwertige Accounts (ihre E-Mail ist ein Platzhalter, bis Sie sie personalisieren).';

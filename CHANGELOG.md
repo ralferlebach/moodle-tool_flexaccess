@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0 (2026102601) — 2026-10-26 — Abgleich mit konstantem Speicher, pdftotext in der CI, Recovery-Journey
+- **Abgleich: konstanter PHP-Speicher (#17).**
+  - **Bisher (2026102502/2026102600):** Die N+1-Abfragen waren beseitigt, aber `record_orphan_restrictions()` lud alle verwaisten Nutzer-IDs und alle Fälle als Arrays (bei 10000 Waisen ≈ 1,6 MB, linear wachsend).
+  - **Jetzt:** Neue Fälle in Schlüsselblöcken von 1000 Waisen (nächster Block, Prüfung vorhandener Fälle, Masseneinfügung); Wiederöffnen und Auflösen je eine mengenbasierte `UPDATE`-Anweisung mit einem korrelierten Prädikat aus auth_flexaccess (Status und Zeit zusammen), je mit vorgeschalteter Zählung. PHP hält höchstens einen Block (gemessen ≈ 0,7 MB, gleichbleibend bis 100.000 Waisen); 100.000 Waisen dauern 8 s (PostgreSQL) bzw. 20 s (MariaDB). Ein Abbruch zwischen zwei Blöcken oder Anweisungen hinterlässt einen konsistenten Stand, den der nächste Lauf vollendet. Ein einziges `INSERT … SELECT … NOT EXISTS` wurde gemessen und verworfen (quadratisch auf PostgreSQL).
+  - Auch die übrigen Stellen sind begrenzt (Entscheidung D4: dokumentiertes Mengengerüst, Budgets, geregeltes Verhalten oberhalb der Grenze): Der Prüfbericht ohne Änderung zählt exakt und listet je Regel höchstens 200 Nutzer; die Reparatur verwaister Rollen im Systemstatus arbeitet in Abschnitten von 200 und protokolliert die genaue Zahl mit höchstens 200 Nutzern; der Zähler „automatisch reparierbare Inkonsistenzen“ prüft höchstens 5000 je Seitenaufruf und meldet darüber „mindestens …“.
+  - Mengengerüst, Budgets und Verhalten oberhalb der Grenze: `docs/reconciliation-capacity.md` (geprüft bis 100.000 Waisen).
+  - Test `reconciliation_scale_test`: Abfrage-, Speicher- (2 MB) und Laufzeitbudget (30 s) bei 0/100/1000/10000 (Kapazitätsprüfung zusätzlich 100.000), Idempotenz, Wiederaufnahme, Teil- gegen Volldurchlauf, begrenzter Prüfbericht, Reparatur in Abschnitten.
+- **pdftotext in der CI (#18):** Alle Workflows mit PHPUnit des Plugins (Dev, Main inkl. Coverage, Family-Release-Gate) und der Playwright-Workflow installieren `poppler-utils` und prüfen `/usr/bin/pdftotext`, bevor die Tests laufen. `credential_issue_test` schlägt ohne pdftotext fehl (bisher `Incomplete`) und prüft zusätzlich, dass kein ausgegebenes Kennwort im Log, in den Batch-Tabellen, den Nutzerdaten oder der Plugin-Konfiguration steht.
+- **Playwright `recovery-journeys.spec.js` (#10, enrol #9):** neue Journey vom aktiven Zugang über Ablauf und Sperre (Ablaufaufgabe), Vorschau und Wiederherstellung bis zum sofortigen Kurszugang; die Bewertungsübersicht mit Moodles Voreinstellung „nur aktive Einschreibungen“ zeigt die Person vorher nicht, nachher sofort.
+- Version `2026102601`, Release `1.2.0`, `MATURITY_STABLE`, `supported` [405, 503].
+
 ## 1.2.0 (2026102600) — 2026-10-26 — Release-Lock nach CI-Korrektur
 - Keine funktionale Änderung. Release-Lock für 2026102600; Nachtrag zum Testbericht `docs/testbericht-2026102600.md` (Ursache des roten Release-Gates und Nachweis der getrennten Consumer-/Provider-Läufe).
 - Version `2026102600`, Release `1.2.0`, `MATURITY_STABLE`, `supported` [405, 503].

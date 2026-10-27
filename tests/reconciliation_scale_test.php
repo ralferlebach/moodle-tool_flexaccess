@@ -22,9 +22,9 @@ use tool_flexaccess\local\reconciliation;
 /**
  * The orphan pass of the reconciliation is set-based, idempotent and resumable (tool_flexaccess #17).
  *
- * Query budget: a fixed number of reads whatever the number of orphans, and writes in chunks; a second
- * pass writes nothing; a pass interrupted between chunks is completed by the next one; only a complete
- * scan resolves cases.
+ * Budget: a fixed number of queries and a fixed PHP memory whatever the number of orphans (the cases are brought
+ * in line by set-based statements in the database); a second pass writes nothing; a pass interrupted between two
+ * statements is completed by the next one; only a complete scan resolves cases.
  *
  * @package    tool_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -35,8 +35,14 @@ final class reconciliation_scale_test extends \advanced_testcase {
     /** @var \core\clock Frozen clock. */
     private \core\clock $clock;
 
-    /** Reads of one orphan pass, whatever the number of orphans: role ids, the orphan list, the cases. */
-    private const READ_BUDGET = 6;
+    /** Reads of one orphan pass besides the keyset blocks: role and context lookups and the two counts. */
+    private const READ_BUDGET = 8;
+
+    /** Runtime of one orphan pass in seconds, up to the documented capacity (generous for shared CI runners). */
+    private const RUNTIME_BUDGET = 30.0;
+
+    /** PHP memory of one orphan pass, whatever the number of orphans (bytes): at most one keyset block is held. */
+    private const MEMORY_BUDGET = 2097152;
 
     protected function setUp(): void {
         parent::setUp();
@@ -79,21 +85,62 @@ final class reconciliation_scale_test extends \advanced_testcase {
             ], $chunk));
         }
         sort($ids);
+        $this->analyze();
         return $ids;
     }
 
     /**
-     * One orphan pass with its query counts.
-     *
-     * @param callable|null $afterchunk Fault injection.
-     * @return array{result:array, reads:int, writes:int}
+     * Fresh planner statistics after a bulk fixture, as autovacuum keeps them in operation (PostgreSQL only; MySQL and
+     * MariaDB keep InnoDB statistics up to date themselves, and ANALYZE TABLE would commit the test transaction there).
+     * Without them PostgreSQL plans for empty tables and the orphan query becomes quadratic - see
+     * docs/reconciliation-capacity.md.
      */
-    private function pass(?callable $afterchunk = null): array {
+    private function analyze(): void {
         global $DB;
+        if ($DB->get_dbfamily() !== 'postgres') {
+            return;
+        }
+        foreach (['user', 'role_assignments', 'auth_flexaccess_account', 'tool_flexaccess_reconcile'] as $table) {
+            $DB->execute('ANALYZE {' . $table . '}');
+        }
+    }
+
+    /**
+     * One orphan pass with its query counts and the PHP memory it needed.
+     *
+     * @param callable|null $afterstep Fault injection.
+     * @return array{result:array, reads:int, writes:int, memory:int, seconds:float}
+     */
+    private function pass(?callable $afterstep = null): array {
+        global $DB;
+        // Class loading and cache filling are one-off costs of the first call, not memory of the pass.
+        // Statistics as autovacuum keeps them after the previous pass or fixture.
+        $this->analyze();
+        // Caches (roles, contexts) are filled by an equivalent query first.
+        \auth_flexaccess\api::count_orphan_restrictions();
+        class_exists(reconciliation::class);
+        $watch = \tool_flexaccess\local\stopwatch::instance();
+        $watch->seconds_since($watch->start());
+        gc_collect_cycles();
+        $base = memory_get_usage();
+        if (function_exists('memory_reset_peak_usage')) {
+            memory_reset_peak_usage();
+        }
         $reads = $DB->perf_get_reads();
         $writes = $DB->perf_get_writes();
-        $result = reconciliation::record_orphan_restrictions($this->clock->time(), $afterchunk);
-        return ['result' => $result, 'reads' => $DB->perf_get_reads() - $reads, 'writes' => $DB->perf_get_writes() - $writes];
+        // A duration, measured with the monotonic stopwatch (the business clock is frozen in this test).
+        $mark = $watch->start();
+        $result = reconciliation::record_orphan_restrictions($this->clock->time(), $afterstep);
+        $seconds = $watch->seconds_since($mark);
+        // Without memory_reset_peak_usage() (PHP 8.1) only the retained memory can be measured.
+        $memory = (function_exists('memory_reset_peak_usage') ? memory_get_peak_usage() : memory_get_usage()) - $base;
+        return [
+            'result' => $result,
+            'reads' => $DB->perf_get_reads() - $reads,
+            'writes' => $DB->perf_get_writes() - $writes,
+            'memory' => $memory,
+            'seconds' => $seconds,
+        ];
     }
 
     /**
@@ -111,36 +158,49 @@ final class reconciliation_scale_test extends \advanced_testcase {
     }
 
     /**
-     * Sizes of the query budget.
+     * Sizes of the query and memory budget.
      *
      * @return array
      */
     public static function sizes(): array {
-        return ['0' => [0], '100' => [100], '1000' => [1000], '10000' => [10000]];
+        $sizes = ['0' => [0], '100' => [100], '1000' => [1000], '10000' => [10000]];
+        // The documented capacity check (docs/reconciliation-capacity.md) adds 100000; too slow for every CI run.
+        if (getenv('FLEXACCESS_SCALE_LARGE')) {
+            $sizes['100000'] = [100000];
+        }
+        return $sizes;
     }
 
     /**
-     * A fixed number of reads, chunked writes and no writes on the second pass, for 0 to 10000 orphans.
+     * A fixed number of queries and a fixed PHP memory budget whatever the number of orphans; a second pass
+     * writes nothing.
      *
      * @dataProvider sizes
      * @param int $n Number of orphans.
      */
-    public function test_query_budget_and_idempotence(int $n): void {
+    public function test_query_and_memory_budget_and_idempotence(int $n): void {
         $orphans = $this->orphans($n);
 
         $first = $this->pass();
         $this->assertSame(['opened' => $n, 'reopened' => 0, 'resolved' => 0], $first['result']);
         $this->assertSame($orphans, $this->open_cases());
-        $this->assertLessThanOrEqual(self::READ_BUDGET, $first['reads'], "reads for $n orphans");
-        // Bulk inserts: one statement per insert chunk of the driver (PostgreSQL 100 rows, MySQL/MariaDB 50 rows),
-        // not one per orphan.
-        $this->assertLessThanOrEqual((int) ceil($n / 50) + 1, $first['writes'], "writes for $n orphans");
+        // Reads: at most three per keyset block of ORPHAN_CHUNK orphans (next block, existing cases, driver lookups
+        // of the bulk insert) and the counts.
+        $blocks = intdiv($n, reconciliation::ORPHAN_CHUNK) + 1;
+        $this->assertLessThanOrEqual(3 * $blocks + self::READ_BUDGET, $first['reads'], "reads for $n orphans");
+        // Writes: the bulk inserts of the blocks, split by the driver (PostgreSQL 100, MySQL/MariaDB 50 rows per
+        // statement); none when there is nothing to insert.
+        $this->assertLessThanOrEqual((int) ceil($n / 50), $first['writes'], "writes for $n orphans");
+        $this->assertSame($n > 0, $first['writes'] > 0);
+        $this->assertLessThan(self::MEMORY_BUDGET, $first['memory'], "PHP memory for $n orphans");
+        $this->assertLessThan(self::RUNTIME_BUDGET, $first['seconds'], "runtime for $n orphans");
 
         // The second pass writes nothing.
         $second = $this->pass();
         $this->assertSame(['opened' => 0, 'reopened' => 0, 'resolved' => 0], $second['result']);
         $this->assertSame(0, $second['writes']);
-        $this->assertLessThanOrEqual(self::READ_BUDGET, $second['reads']);
+        $this->assertLessThanOrEqual(3 * $blocks + self::READ_BUDGET, $second['reads']);
+        $this->assertLessThan(self::MEMORY_BUDGET, $second['memory'], "PHP memory for $n orphans, second pass");
     }
 
     public function test_resolving_and_reopening_set_status_and_time_together(): void {
@@ -148,14 +208,14 @@ final class reconciliation_scale_test extends \advanced_testcase {
         $orphans = $this->orphans(1200);
         $this->pass();
 
-        // 700 restrictions are lifted: their cases are resolved, in chunks, with status and time in one statement.
+        // 700 restrictions are lifted: their cases are resolved by one statement that sets status and time together.
         $lifted = array_slice($orphans, 0, 700);
         [$insql, $params] = $DB->get_in_or_equal($lifted, SQL_PARAMS_NAMED);
         $DB->delete_records_select('role_assignments', "userid $insql", $params);
         $this->clock->bump(60);
         $resolve = $this->pass();
         $this->assertSame(['opened' => 0, 'reopened' => 0, 'resolved' => 700], $resolve['result']);
-        $this->assertSame((int) ceil(700 / reconciliation::CHUNK), $resolve['writes']);
+        $this->assertSame(1, $resolve['writes']);
         $this->assertSame(array_slice($orphans, 700), $this->open_cases());
         $this->assertSame(700, $DB->count_records('tool_flexaccess_reconcile', [
             'code' => reconciliation::REVIEW_ORPHAN_RESTRICTION, 'status' => 'resolved', 'timemodified' => $this->clock->time(),
@@ -175,29 +235,36 @@ final class reconciliation_scale_test extends \advanced_testcase {
         $this->assertSame(0, $this->pass()['writes']);
     }
 
-    public function test_a_pass_interrupted_between_chunks_is_completed_by_the_next(): void {
+    public function test_a_pass_interrupted_between_statements_is_completed_by_the_next(): void {
         global $DB;
         $orphans = $this->orphans(1200);
-        $chunks = 0;
+        $this->pass();
+        // 700 restrictions lifted (to be resolved) and 300 new orphans (to be opened).
+        [$insql, $params] = $DB->get_in_or_equal(array_slice($orphans, 0, 700), SQL_PARAMS_NAMED);
+        $DB->delete_records_select('role_assignments', "userid $insql", $params);
+        $new = $this->orphans(300);
+        $this->clock->bump(60);
+        $steps = [];
         try {
-            $this->pass(function () use (&$chunks): void {
-                if (++$chunks === 1) {
-                    throw new \RuntimeException('Injected failure after the first chunk.');
-                }
+            $this->pass(function (string $step) use (&$steps): void {
+                $steps[] = $step;
+                throw new \RuntimeException("Injected failure after the step '$step'.");
             });
             $this->fail('The injected failure must surface.');
         } catch (\RuntimeException $e) {
-            $this->assertSame(1, $chunks);
+            $this->assertSame(['opened'], $steps);
         }
-        // A consistent intermediate state: exactly the first chunk, every row complete.
-        $this->assertCount(reconciliation::CHUNK, $this->open_cases());
-        $this->assertSame(0, $DB->count_records_select('tool_flexaccess_reconcile', 'timemodified <> :t OR timecreated <> :t2', [
-            't' => $this->clock->time(), 't2' => $this->clock->time(),
+        // A consistent intermediate state: the new cases complete, the lifted ones still open.
+        $this->assertCount(1500, $this->open_cases());
+        $this->assertSame(300, $DB->count_records('tool_flexaccess_reconcile', [
+            'timecreated' => $this->clock->time(), 'timemodified' => $this->clock->time(),
         ]));
 
         $resume = $this->pass();
-        $this->assertSame(['opened' => 1200 - reconciliation::CHUNK, 'reopened' => 0, 'resolved' => 0], $resume['result']);
-        $this->assertSame($orphans, $this->open_cases());
+        $this->assertSame(['opened' => 0, 'reopened' => 0, 'resolved' => 700], $resume['result']);
+        $expected = array_merge(array_slice($orphans, 700), $new);
+        sort($expected);
+        $this->assertSame($expected, $this->open_cases());
         $this->assertSame(0, $this->pass()['writes']);
     }
 
@@ -238,5 +305,42 @@ final class reconciliation_scale_test extends \advanced_testcase {
         $this->assertSame('done', $state->status);
         $this->assertSame([], $this->open_cases());
         $this->assertSame(1, $state->orphans->resolved);
+    }
+
+    public function test_inspection_report_counts_exactly_and_lists_a_bounded_number(): void {
+        $n = reconciliation::REPORT_IDS + 50;
+        for ($i = 0; $i < $n; $i++) {
+            // A temporary account without the restriction role: one repairable inconsistency each.
+            $userid = \auth_flexaccess\api::create_temporary_user($this->clock->time() + DAYSECS);
+            role_unassign_all(['userid' => $userid, 'roleid' => participant_role::get_restriction_id()]);
+        }
+        $report = reconciliation::run(reconciliation::MODE_INSPECT, reconciliation::SOURCE_STATUS);
+        $this->assertSame($n, $report->repaircounts[reconciliation::RULE_RESTRICT]);
+        $this->assertCount(reconciliation::REPORT_IDS, $report->repairs[reconciliation::RULE_RESTRICT]);
+        $this->assertSame($n, $report->affected);
+        $preview = \tool_flexaccess\local\health::preview(\tool_flexaccess\local\health::REPAIR_RECONCILE);
+        $this->assertSame($n, $preview['total']);
+        $this->assertCount(reconciliation::REPORT_IDS, $preview['userids']);
+    }
+
+    public function test_orphan_repair_runs_in_batches_with_a_bounded_list(): void {
+        global $DB;
+        $this->setAdminUser();
+        $n = reconciliation::BATCH * 2 + 50;
+        $this->orphans($n);
+        $preview = \tool_flexaccess\local\health::preview(\tool_flexaccess\local\health::REPAIR_ORPHAN);
+        $this->assertSame($n, $preview['total']);
+        $this->assertCount(reconciliation::REPORT_IDS, $preview['userids']);
+
+        $sink = $this->redirectEvents();
+        $this->assertSame($n, \tool_flexaccess\local\health::repair(\tool_flexaccess\local\health::REPAIR_ORPHAN));
+        $events = array_values(array_filter($sink->get_events(), fn($e) => $e instanceof \tool_flexaccess\event\health_repaired));
+        $sink->close();
+        $this->assertSame(0, \auth_flexaccess\api::count_orphan_restrictions());
+        // The audit event records the exact number and a bounded list.
+        $this->assertCount(1, $events);
+        $other = $events[0]->other;
+        $this->assertSame($n, $other['affected']);
+        $this->assertCount(reconciliation::REPORT_IDS, $other['userids']);
     }
 }

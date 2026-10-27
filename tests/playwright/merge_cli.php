@@ -20,7 +20,9 @@
  * Usage: php merge_cli.php merge <keepid> <removeid> | grade <itemid> <userid> | registry <removeid> <keepid>
  *        | approve <removeid> <keepid> | user <username> | linked <idp username> | pendingpair <courseid>
  *        | durablepair <flex|manual> | pendingcredential | suspendedue <courseid> | tempbinding
- *        | state <userid> <otheruserid>
+ *        | state <userid> <otheruserid> | activeue <courseid> | expireue <ueid> | uestatus <ueid>
+ *        | newbatch <courseid> <n> | batchstate <batchid>
+ *        | importfixture <batchid> <path> <row>
  * Prints one JSON object.
  *
  * @package    tool_flexaccess
@@ -31,6 +33,7 @@
 define('CLI_SCRIPT', true);
 
 require(__DIR__ . '/../../../../../config.php');
+require_once($CFG->dirroot . '/user/lib.php');
 
 [, $command, $first, $second] = array_pad($argv, 4, 0);
 $kind = (string) $first;
@@ -188,6 +191,48 @@ switch ($command) {
     case 'registry':
         $row = \auth_flexaccess\local\merge_registry::get($first, $second);
         $out = ['status' => $row ? $row->status : null, 'reasons' => $row ? $row->reasons : null];
+        break;
+    case 'activeue':
+        // A permanent FlexAccess account with a password and an active course enrolment (tool #10, enrol #9).
+        $username = 'flexsuspend' . strtolower(random_string(6));
+        $password = 'Suspend-Me-Pass!1';
+        $id = (int) user_create_user((object) [
+            'username' => $username, 'password' => $password, 'auth' => 'flexaccess', 'firstname' => 'Sami',
+            'lastname' => 'Suspended' . strtoupper(random_string(4)), 'email' => $username . '@example.invalid',
+            'confirmed' => 1, 'mnethostid' => $CFG->mnet_localhost_id,
+        ], true, false);
+        \auth_flexaccess\local\account_service::create_authenticated(
+            $id,
+            \auth_flexaccess\local\account_service::generate_unique_reference()
+        );
+        update_internal_user_password(\core_user::get_user($id), $password);
+        \enrol_flexaccess\local\enrol_service::admin_enrol($first, $id);
+        $ue = $DB->get_record_sql(
+            "SELECT ue.id, ue.status FROM {user_enrolments} ue JOIN {enrol} e ON e.id = ue.enrolid AND e.enrol = 'flexaccess'
+              WHERE ue.userid = :u AND e.courseid = :c",
+            ['u' => $id, 'c' => $first],
+            MUST_EXIST
+        );
+        $user = $DB->get_record('user', ['id' => $id]);
+        $out = ['id' => $id, 'ueid' => (int) $ue->id, 'username' => $username, 'password' => $password,
+            'fullname' => fullname($user), 'status' => (int) $ue->status];
+        break;
+    case 'expireue':
+        // The access window of a FlexAccess enrolment ends and the expiry task runs, as cron would.
+        $DB->set_field('user_enrolments', 'timeend', \core\di::get(\core\clock::class)->time() - 60, ['id' => $first]);
+        \enrol_flexaccess\local\enrol_expiry::process();
+        $out = ['status' => (int) $DB->get_field('user_enrolments', 'status', ['id' => $first])];
+        break;
+    case 'uestatus':
+        // Status of a user enrolment and whether Core counts the user as an active participant of the course.
+        $ue = $DB->get_record('user_enrolments', ['id' => $first], '*', MUST_EXIST);
+        $courseid = (int) $DB->get_field('enrol', 'courseid', ['id' => $ue->enrolid]);
+        $context = \context_course::instance($courseid);
+        $out = [
+            'status' => (int) $ue->status,
+            'activeparticipant' => is_enrolled($context, (int) $ue->userid, '', true),
+            'inactivelist' => array_key_exists((int) $ue->userid, get_enrolled_users($context, '', 0, 'u.id', null, 0, 0, true)),
+        ];
         break;
     case 'newbatch':
         // A complete access list of $second temporary accounts in course $first (tool #15, #16).
