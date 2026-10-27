@@ -51,6 +51,21 @@ python3 .github/scripts/flexaccess_family.py digest --dir . --without-lock      
 Hochladen: auth, enrol und mod **vollständig** (alle Dateien des ZIPs; im Repository vorhandene, im ZIP
 fehlende Dateien löschen), danach tool_flexaccess. Der Push der Lock-Datei startet das Gate.
 
+**Änderungen direkt auf GitHub** (etwa ein ausgetauschtes Plugin-Logo beim Hochladen) ändern den Inhalt; das Gate
+schlägt dann fail-closed fehl („the commit under test carries content …, the lock pins …“). So geschehen mit
+2026102601: alle vier `pix/pluginlogo.png` ersetzt, sonst identisch. Abhilfe ist nie ein Umgehen des Locks,
+sondern: die Änderung in den Release-Baum übernehmen, neu pinnen, neu ausliefern. Vor jeder neuen Auslieferung
+werden die GitHub-Köpfe deshalb mit dem zuletzt ausgelieferten Stand verglichen (nur Inhalt, Dateirechte zählen
+nicht), zum Beispiel:
+
+```bash
+git fetch origin development
+git diff --raw --no-abbrev <letzter ausgelieferter Stand> origin/development | awk '$3 != $4 {print $5, $6}'
+```
+
+Eine Datei, die dort erscheint, wurde nach der Auslieferung auf GitHub geändert und gehört in den nächsten
+Release-Baum (oder wird auf GitHub zurückgenommen).
+
 ## Freigabe (Release)
 
 Mit Inhalts-Lock (Archivauslieferung, Regelfall): siehe oben; danach weiter mit Schritt 4.
@@ -72,7 +87,7 @@ Release-ZIPs (`git archive`, beachtet `export-ignore`) und die Berichte der LTI-
 ### Testgrenzen, die in jede Freigabe gehören
 
 Eine Freigabe für produktive externe Identitätsanbieter oder LTI-Plattformen nennt ausdrücklich, was die
-Pipeline **nicht** belegt (Stand 2026102500):
+Pipeline **nicht** belegt (Stand 2026102700):
 
 - OAuth 2: Ende-zu-Ende nur gegen einen lokalen Test-Anbieter (Node, http, Endpunkte direkt in der Datenbank);
   kein produktiver Identitätsanbieter. LDAP, CAS, Shibboleth, SAML2, DB und MNet: nur die Bindung über den
@@ -80,8 +95,14 @@ Pipeline **nicht** belegt (Stand 2026102500):
 - LTI 1.3: zwei Moodle-Instanzen mit eigener Test-CA, nur PostgreSQL, keine Fremdplattform.
 - Browser: die Plugin-Suiten nur mit Chromium; im Gate läuft die LTI-Consumer-Seite zusätzlich mit Firefox,
   WebKit nie. Playwright nur auf 4.5 und 5.3, nicht auf 5.0/5.2.
-- Gleichzeitige Abgleiche desselben Kontenpaars: über eine Sperre serialisiert, in einem PHP-Prozess nicht
-  testbar.
+- Gleichzeitige Abgleiche desselben Kontenpaars: über eine Sperre serialisiert. Getestet mit Dateisperren, die
+  auch innerhalb eines PHP-Prozesses kollidieren (Zusammenführung während einer gehaltenen Sperre abgewiesen,
+  Abgleichsaufgabe schlägt fehl und wird wiederholt); zwei echte parallele Webanfragen nicht. Ein LTI-Launch, der
+  während der Zusammenführung unterwegs ist, ist im Zwei-Site-Test belegt; eine Datenbanktransaktion, die mitten
+  in der Zusammenführung angehalten wird, nicht.
+- Zustellung des Zugangsdatenpakets: HTTP kann den Empfang einer Datei nicht beweisen. Zugesagt ist die atomare
+  Bereitstellung auf dem Server und eine auditierte Neuausgabe nach einer unterbrochenen Übertragung (Playwright
+  „interrupted delivery after the server committed …“).
 
 ## Lokal reproduzieren
 

@@ -106,6 +106,30 @@ test.describe('Changing actions are POST only (tool_flexaccess #14)', () => {
     expect(cli('state', pair.from, pair.to).evidenceopen).toBe(before.pair.evidenceopen - 1);
   });
 
+  test('LTI identities: without the right to change users, a valid POST changes nothing (auth #14)', async ({ page }) => {
+    const pair = cli('pendingpair', E.FLEXACCESS_MERGE_COURSE_ID);
+    const temp = cli('tempbinding');
+    const before = { pair: cli('state', pair.from, pair.to), temp: cli('state', temp.id, 0) };
+    const reviewer = cli('reviewonly');
+    await loginAs(page, reviewer.username, reviewer.password);
+    const base = '/admin/tool/flexaccess/ltiidentities.php';
+    const response = await page.goto(base);
+    expect(response.status()).toBe(200);
+    const key = await page.evaluate(() => window.M.cfg.sesskey);
+    for (const params of [
+      { action: 'approve', fromid: pair.from, toid: pair.to, ownershipverified: 1, prooftype: 'documents',
+        proofevidence: 'Checked the photo ID at the help desk, ticket 10.' },
+      { action: 'repoint', fromid: pair.from, toid: pair.to, ownershipverified: 1 },
+      { action: 'acknowledge', fromid: pair.from, toid: pair.to },
+      { action: 'removebinding', bindingid: temp.bindingid },
+    ]) {
+      const result = await page.request.post(base, { form: { ...params, sesskey: key } });
+      expect(await result.text(), params.action).toMatch(/permission|Berechtigung|nicht erlaubt|not allowed/i);
+      expect(cli('state', pair.from, pair.to), params.action).toEqual(before.pair);
+      expect(cli('state', temp.id, 0), params.action).toEqual(before.temp);
+    }
+  });
+
   test('user page: resending the set-password link only by POST', async ({ page }) => {
     const key = await sesskey(page);
     const account = cli('pendingcredential');

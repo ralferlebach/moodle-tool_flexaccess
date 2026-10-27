@@ -22,7 +22,9 @@
  *        | durablepair <flex|manual> | pendingcredential | suspendedue <courseid> | tempbinding
  *        | state <userid> <otheruserid> | activeue <courseid> | expireue <ueid> | uestatus <ueid>
  *        | newbatch <courseid> <n> | batchstate <batchid>
- *        | importfixture <batchid> <path> <row>
+ *        | importfixture <batchid> <path> <row> | courseissuer <courseid> | packagecreds <zip>
+ *        | checkpw <username> <password> | plaintext <batchid> <json passwords> | issueevents <batchid>
+ *        | reviewonly
  * Prints one JSON object.
  *
  * @package    tool_flexaccess
@@ -278,6 +280,102 @@ switch ($command) {
         $sheet->setCellValue('A' . (int) ($argv[4] ?? 50000), 'kurs-stray');
         (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($sheet->getParent()))->save((string) $argv[3]);
         $out = ['path' => (string) $argv[3]];
+        break;
+    case 'reviewonly':
+        // A support account that may open the LTI identities page (recoversystem) but not change users.
+        $roleid = (int) $DB->get_field('role', 'id', ['shortname' => 'flexaccessreview']);
+        if (!$roleid) {
+            $roleid = create_role('FlexAccess review only', 'flexaccessreview', 'Can see, not change, identities.');
+            set_role_contextlevels($roleid, [CONTEXT_SYSTEM]);
+            assign_capability('tool/flexaccess:recoversystem', CAP_ALLOW, $roleid, \context_system::instance()->id);
+            assign_capability('moodle/user:update', CAP_PROHIBIT, $roleid, \context_system::instance()->id);
+        }
+        $username = 'review' . strtolower(random_string(8));
+        $password = 'Review-Pass!1' . random_string(6);
+        $userid = (int) user_create_user((object) [
+            'username' => $username, 'password' => $password, 'auth' => 'manual', 'confirmed' => 1,
+            'mnethostid' => $CFG->mnet_localhost_id, 'firstname' => 'Review', 'lastname' => 'Only',
+            'email' => $username . '@example.org',
+        ], true, false);
+        role_assign($roleid, $userid, \context_system::instance()->id);
+        $out = ['username' => $username, 'password' => $password];
+        break;
+    case 'courseissuer':
+        // A course manager: may issue a batch's credentials in course $first once, but not reissue (no site right).
+        $username = 'issuer' . strtolower(random_string(8));
+        $password = 'Issuer-Pass!1' . random_string(6);
+        $userid = (int) user_create_user((object) [
+            'username' => $username, 'password' => $password, 'auth' => 'manual', 'confirmed' => 1,
+            'mnethostid' => $CFG->mnet_localhost_id, 'firstname' => 'Course', 'lastname' => 'Issuer',
+            'email' => $username . '@example.org',
+        ], true, false);
+        role_assign(
+            (int) $DB->get_field('role', 'id', ['shortname' => 'manager']),
+            $userid,
+            \context_course::instance($first)->id
+        );
+        $out = ['username' => $username, 'password' => $password];
+        break;
+    case 'packagecreds':
+        // User name => password from the spreadsheet of a delivered package (path $argv[2]).
+        $dir = make_request_directory();
+        $zip = new \ZipArchive();
+        if ($zip->open((string) $argv[2]) !== true) {
+            cli_error('Not a ZIP archive.');
+        }
+        $zip->extractTo($dir);
+        $zip->close();
+        $out = [];
+        foreach (glob($dir . '/*.xlsx') as $xlsx) {
+            $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xlsx');
+            $reader->setReadDataOnly(true);
+            $sheet = $reader->load($xlsx)->getActiveSheet();
+            for ($r = 2; $r <= $sheet->getHighestRow(); $r++) {
+                $username = (string) $sheet->getCell('A' . $r)->getValue();
+                if ($username !== '') {
+                    $out[$username] = (string) $sheet->getCell('B' . $r)->getValue();
+                }
+            }
+        }
+        break;
+    case 'checkpw':
+        // Whether the password $argv[3] signs in the account $argv[2] (as the login form would check it).
+        $user = $DB->get_record('user', ['username' => (string) $argv[2], 'deleted' => 0], '*', MUST_EXIST);
+        $out = ['valid' => validate_internal_user_password($user, (string) $argv[3])];
+        break;
+    case 'plaintext':
+        // Where any of the plain passwords in the JSON list $argv[3] occurs in the database (expected: nowhere).
+        $needles = array_values(array_filter(json_decode((string) $argv[3], true) ?: []));
+        $found = [];
+        $places = [
+            'logstore_standard_log' => 'other', 'config_plugins' => 'value', 'task_adhoc' => 'customdata',
+            'tool_flexaccess_batch' => '*', 'tool_flexaccess_batch_member' => '*', 'user' => '*',
+            'user_preferences' => 'value', 'auth_flexaccess_account' => '*',
+        ];
+        foreach ($places as $table => $column) {
+            if (!$DB->get_manager()->table_exists($table)) {
+                continue;
+            }
+            foreach ($DB->get_recordset($table) as $row) {
+                $haystack = $column === '*' ? json_encode(array_diff_key((array) $row, ['password' => 1])) : (string) $row->$column;
+                foreach ($needles as $needle) {
+                    if (str_contains($haystack, $needle) || str_contains($haystack, json_encode($needle))) {
+                        $found[] = $table;
+                    }
+                }
+            }
+        }
+        $out = ['checked' => count($needles), 'found' => array_values(array_unique($found))];
+        break;
+    case 'issueevents':
+        // The audit trail of issuing batch $first: one entry per issue, with whether it was a reissue and by whom.
+        $out = array_values(array_map(static fn($e) => [
+            'reissue' => (bool) (json_decode($e->other, true)['reissue'] ?? false),
+            'userid' => (int) $e->userid,
+            'count' => (int) (json_decode($e->other, true)['count'] ?? 0),
+        ], $DB->get_records('logstore_standard_log', [
+            'eventname' => '\\tool_flexaccess\\event\\batch_credentials_issued', 'objectid' => $first,
+        ], 'id ASC', 'id, other, userid')));
         break;
     default:
         cli_error('Unknown command.');

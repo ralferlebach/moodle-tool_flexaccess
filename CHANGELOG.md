@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 (2026102700) — 2026-10-27 — Unterbrochene Zustellung des Zugangsdatenpakets, Release-Lock, Logo
+- **Release-Lock 2026102601 war rot**, weil auf GitHub nach dem Upload die Plugin-Logos aller vier Plugins ersetzt wurden; der Inhaltspin erfasst jede Datei (fail-closed, wie vorgesehen). Die Logos sind übernommen, der Lock ist neu bestimmt; `docs/release-gate.md` beschreibt, wie direkt auf GitHub geänderte Dateien vor dem nächsten Upload auffallen.
+- **tool #15, unterbrochene Zustellung:** Playwright-Journey „interrupted delivery after the server committed …“ – die Verbindung bricht ab, nachdem der Server das Paket gebaut, geprüft und die Ausgabe festgeschrieben hat: kein zweites Paket durch Wiederholen, keine erneute Kennwortänderung, die Kursverwaltung erhält den Hinweis auf die Neuausgabe, eine Person mit dem Website-Recht gibt auditiert neu aus (zweites Ereignis mit `reissue`), die verlorenen Kennwörter melden niemanden mehr an, die neuen schon; kein Klartext-Kennwort beider Pakete in Ereignissen, Konfiguration, Aufgaben, Listen- oder Nutzerdatensätzen. HTTP kann den Empfang einer Datei nicht beweisen; zugesagt ist die atomare Bereitstellung auf dem Server und die auditierte Neuausgabe (Entscheidung E1).
+- Playwright `method-contract.spec.js`: neuer Fall „without the right to change users, a valid POST changes nothing“ – ein Konto, das die Seite „LTI-Identitäten“ sehen, aber keine Nutzer ändern darf, kann mit gültigem Sesskey weder freigeben noch umhängen, quittieren oder eine Bindung entfernen (auth #14).
+- Neue CLI-Befehle der Testhilfe: `courseissuer`, `reviewonly`, `packagecreds`, `checkpw`, `plaintext`, `issueevents`. Nur Testcode.
+- Plugin-Logo wie mit 2026102601 hochgeladen übernommen.
+- Version `2026102700`, Release `1.2.0`.
+
 ## 1.2.0 (2026102601) — 2026-10-26 — Abgleich mit konstantem Speicher, pdftotext in der CI, Recovery-Journey
 - **Abgleich: konstanter PHP-Speicher (#17).**
   - **Bisher (2026102502/2026102600):** Die N+1-Abfragen waren beseitigt, aber `record_orphan_restrictions()` lud alle verwaisten Nutzer-IDs und alle Fälle als Arrays (bei 10000 Waisen ≈ 1,6 MB, linear wachsend).
