@@ -349,5 +349,32 @@ class FamilyTest(unittest.TestCase):
         self.assertIn('checksum', err)
 
 
+    def test_git_runs_without_background_maintenance(self):
+        # git >= 2.47 runs automatic maintenance after a fetch as a detached process, which kept writing into the
+        # throw-away repositories while they were removed (release gate 2026102700, git 2.55). Whatever the
+        # runner's git configuration says, the resolver's git calls must not start it.
+        repo = os.path.join(self.tmp, 'maintenance')
+        os.makedirs(repo)
+        settings = os.path.join(self.tmp, 'gitconfig')
+        with open(settings, 'w', encoding='utf-8') as handle:
+            handle.write('[maintenance]\n\tauto = true\n[gc]\n\tauto = 1\n[fetch]\n\twriteCommitGraph = true\n')
+        previous = os.environ.get('GIT_CONFIG_GLOBAL')
+        os.environ['GIT_CONFIG_GLOBAL'] = settings
+        try:
+            family.git('init', '-q', cwd=repo)
+            self.assertEqual('false', family.git('config', '--get', 'maintenance.auto', cwd=repo).strip())
+            self.assertEqual('0', family.git('config', '--get', 'gc.auto', cwd=repo).strip())
+            self.assertEqual('false', family.git('config', '--get', 'fetch.writeCommitGraph', cwd=repo).strip())
+            # A content lookup against a remote leaves nothing running and nothing behind.
+            remote = os.path.join(self.root, 'owner/moodle-auth_flexaccess')
+            head = family.find_content_commit('owner/moodle-auth_flexaccess', 'development',
+                                              family.content_digest(remote))
+            self.assertEqual(self.heads['auth_flexaccess'], head)
+        finally:
+            if previous is None:
+                del os.environ['GIT_CONFIG_GLOBAL']
+            else:
+                os.environ['GIT_CONFIG_GLOBAL'] = previous
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

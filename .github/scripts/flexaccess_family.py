@@ -77,9 +77,16 @@ class FamilyError(Exception):
     """A hard failure: the combination cannot be pinned or verified."""
 
 
+# Options for every git call of the resolver. Since git 2.47, "git fetch" starts automatic maintenance (gc,
+# commit-graph) as a detached background process. In the throw-away repositories of the resolver that process
+# still writes into .git/objects while the directory is removed, and the removal fails ("Directory not empty:
+# 'objects'", seen on the GitHub runner with git 2.55). The resolver never needs maintenance.
+GIT_OPTIONS = ('-c', 'maintenance.auto=false', '-c', 'gc.auto=0', '-c', 'fetch.writeCommitGraph=false')
+
+
 def git(*args, cwd=None):
-    """Run git and return stdout; raise FamilyError on failure."""
-    result = subprocess.run(['git', *args], cwd=cwd, capture_output=True, text=True)
+    """Run git (without background maintenance) and return stdout; raise FamilyError on failure."""
+    result = subprocess.run(['git', *GIT_OPTIONS, *args], cwd=cwd, capture_output=True, text=True)
     if result.returncode != 0:
         raise FamilyError('git %s failed: %s' % (' '.join(args), (result.stderr or result.stdout).strip()))
     return result.stdout
@@ -139,7 +146,7 @@ def fetch_commit(repo, sha, dest):
 
 def remote_version(repo, sha):
     """Version and component of a commit, read without a working copy."""
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         git('init', '-q', cwd=tmp)
         git('fetch', '-q', '--depth', '1', repo_url(repo), sha, cwd=tmp)
         return plugin_facts(git('show', 'FETCH_HEAD:version.php', cwd=tmp))
@@ -163,7 +170,7 @@ def content_digest(cwd, commit='HEAD', exclude=()):
 def find_content_commit(repo, ref, content, depth=HISTORY_DEPTH):
     """The head of a branch, provided it carries exactly the locked content (no drift, no leftovers)."""
     head = branch_sha(repo, ref)
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         git('init', '-q', cwd=tmp)
         git('fetch', '-q', '--depth', str(depth), repo_url(repo), 'refs/heads/%s:refs/remotes/lock/%s' % (ref, ref),
             cwd=tmp)
@@ -324,7 +331,7 @@ def cmd_lock(args, config):
                         print('Waiting for %s: %s' % (component, error), flush=True)
                         time.sleep(args.interval)
             else:
-                with tempfile.TemporaryDirectory() as tmp:
+                with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
                     git('init', '-q', cwd=tmp)
                     git('fetch', '-q', '--depth', '1', repo_url(entry['repo']), entry['sha'], cwd=tmp)
                     if content_digest(tmp, 'FETCH_HEAD') != entry['content']:
@@ -391,7 +398,7 @@ def cmd_pin(args, config):
         lock['plugins'][component] = {'repo': repo, 'sha': 'SELF' if component == 'tool_flexaccess' else sha,
                                       'version': version}
         if component != 'tool_flexaccess':
-            with tempfile.TemporaryDirectory() as tmp:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
                 git('init', '-q', cwd=tmp)
                 git('fetch', '-q', '--depth', '1', repo_url(repo), sha, cwd=tmp)
                 lock['plugins'][component]['content'] = content_digest(tmp, 'FETCH_HEAD')
@@ -444,7 +451,7 @@ def cmd_zipcheck(args, config):
     report = {}
     for component in COMPONENTS:
         entry = lock['plugins'][component]
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             git('init', '-q', cwd=tmp)
             git('fetch', '-q', '--depth', '1', repo_url(entry['repo']), entry['sha'], cwd=tmp)
             archive = os.path.join(tmp, 'release.zip')

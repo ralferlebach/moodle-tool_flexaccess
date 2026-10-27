@@ -23,7 +23,7 @@ Plugin-Code. Umgebungen: PHP 8.3.6; Moodle 4.5.15, 5.0.11, 5.2.4+, 5.3+; Postgre
 |---|---|---|
 | PHPUnit, alle vier Plugins | 4.5 PostgreSQL 16, 4.5 MariaDB 10.11, 5.0 PostgreSQL, 5.0 MariaDB, 5.2 PostgreSQL, 5.2 MariaDB, 5.3 PostgreSQL 17, 5.3 MariaDB 11.4 | alle 8 grün, kein Failure, Error, Skip oder Incomplete: auth 231 Tests (4.5, mit „survey answer“) bzw. 230 (5.x), enrol 247, mod 9, tool 178; auf 5.x nur PHPUnit-11-Deprecation-Hinweise des Test-Frameworks |
 | Statische Prüfungen (phplint, Codechecker ohne Warnung, phpdoc, validate, savepoints, mustache) | 4.5 und 5.3, alle vier Plugins | grün |
-| Familien-Resolver-Selbsttest | Python 3 | 17 Tests OK |
+| Familien-Resolver-Selbsttest | Python 3 | 17 Tests OK (Nachtrag: 18, siehe unten) |
 | Playwright, Chromium | 4.5 PostgreSQL | auth 7, enrol 10, mod 4, tool 34 bestanden + 1 übersprungen (Dark-Mode-Kontrast erst ab 5.3) |
 | Playwright, Chromium | 5.3 PostgreSQL 17, `public/`-Webroot | auth 7, enrol 10, mod 4, tool 35 bestanden |
 | Playwright tool, Chromium | 4.5 MariaDB 10.11 | 34 bestanden + 1 übersprungen (wie oben) |
@@ -71,3 +71,24 @@ Mengengerüst des Abgleichs (tool #17) und echte Deinstallation/Neuinstallation 
 - Eine Datenbanktransaktion, die mitten in der Zusammenführung angehalten wird; zwei echte parallele Webanfragen auf
   dasselbe Kontenpaar (Sperre mit Dateisperren in einem Prozess belegt).
 - Playwright/LTI auf 5.0/5.2 (nach D2 nicht verlangt); WebKit.
+
+## Nachtrag 27.10.2026, abends: Release-Gate 2026102700 rot (ohne Versionswechsel behoben)
+
+**Befund:** Job „Lock (exact commits)“, Schritt „Verify the committed lock“: `OSError: [Errno 39] Directory not empty:
+'objects'` beim Aufräumen eines temporären Verzeichnisses in `find_content_commit()`. Der Fehler trat beim Löschen auf,
+nicht beim Vergleich; die Selbsttests (17/17) liefen vorher grün. Ursache: Der Runner (ubuntu-22.04, Image 20261021)
+hat git 2.55; seit git 2.47 startet `git fetch` die automatische Wartung als losgelösten Hintergrundprozess, der noch
+in `.git/objects` des Wegwerf-Repositorys schrieb, während Python es löschte. Lokal (git 2.43) tritt das nicht auf.
+
+**Gegenprobe der Inhalte:** Die vier GitHub-Köpfe (auth `0c5fd23`, enrol `ff60068`, mod `bb5afad`, tool `9e9e3ca`) tragen
+inhaltlich genau den ausgelieferten Stand (Vergleich mit dem Tag `r2026102700`, nur Inhalt). Der Lock-Befehl des Gates
+lief lokal gegen genau diese GitHub-Köpfe dreimal ohne Fehler und löste alle vier Plugins auf. Der Lock war also
+richtig; der Abbruch kam vom Aufräumen.
+
+**Korrektur (alle vier Repositories, gleiche Version 2026102700):** Der Resolver ruft Git mit
+`maintenance.auto=false`, `gc.auto=0` und `fetch.writeCommitGraph=false` auf; temporäre Verzeichnisse werden mit
+`ignore_cleanup_errors` entfernt. Neuer Selbsttest `test_git_runs_without_background_maintenance` (setzt eine globale
+Git-Konfiguration mit eingeschalteter Wartung und prüft, dass die Aufrufe des Resolvers sie nicht verwenden; ohne die
+Korrektur rot). Selbsttests: tool 18/18, auth/enrol/mod je grün. Plugin-Code unverändert; die übrigen Läufe dieses
+Berichts gelten weiter. Der Lock ist danach neu bestimmt; die ZIPs aller vier Plugins sind neu gebaut und gegen den
+Lock geprüft.

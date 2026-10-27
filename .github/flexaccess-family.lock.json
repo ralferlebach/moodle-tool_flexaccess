@@ -7,25 +7,25 @@
   },
   "plugins": {
     "auth_flexaccess": {
-      "content": "90ea809af4fc6d238676125c152d37521796f4e13aa448835a3712de0f176e7c",
+      "content": "228a198093023776af8028c795fc4c59a92407177c3e4b7ba664c5b9d909123f",
       "ref": "development",
       "repo": "ralferlebach/moodle-auth_flexaccess",
       "version": 2026102700
     },
     "enrol_flexaccess": {
-      "content": "33474ebc58d90728d3fc9b7734e5750de440a08ee185c137a5eb02c43a74f2af",
+      "content": "31e99b5630292b7c01413cd685975c69a328b8a32d9e226ff4b8385e476e0524",
       "ref": "development",
       "repo": "ralferlebach/moodle-enrol_flexaccess",
       "version": 2026102700
     },
     "mod_flexaccess": {
-      "content": "4c5b9bad8d017aa1ada61bbefeafccc5588f8dafb3c31c768029f34b2e594376",
+      "content": "422804e1bb6f6399ad123b9652b07bf457cdec0a83e075a54ae18fb21e5b11ae",
       "ref": "development",
       "repo": "ralferlebach/moodle-mod_flexaccess",
       "version": 2026102700
     },
     "tool_flexaccess": {
-      "content": "18dede975f0516dc0f5e0975fd6903b0ad922525a747612abf79d21eb68f9e96",
+      "content": "9471fa2ed8758c9cf2d280b72f13aefce6a780b52eee4e92a72ffaf0d252d0b3",
       "repo": "ralferlebach/moodle-tool_flexaccess",
       "sha": "SELF",
       "version": 2026102700
