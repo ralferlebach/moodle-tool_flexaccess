@@ -92,3 +92,23 @@ Git-Konfiguration mit eingeschalteter Wartung und prüft, dass die Aufrufe des R
 Korrektur rot). Selbsttests: tool 18/18, auth/enrol/mod je grün. Plugin-Code unverändert; die übrigen Läufe dieses
 Berichts gelten weiter. Der Lock ist danach neu bestimmt; die ZIPs aller vier Plugins sind neu gebaut und gegen den
 Lock geprüft.
+
+## Nachtrag 2 (27.10.2026, später Abend): Release-Gate entfernt
+
+Das Gate schlug nach dem Upload erneut fehl: „the commit under test carries content f24b9138…, the lock pins
+9471fa2e…“. Ursache: `CHANGELOG.md` von tool_flexaccess wurde auf GitHub bearbeitet (Eintrag zum Resolver entfernt),
+auth, enrol und mod trugen noch den vorherigen Stand. Auf Entscheidung des Maintainers sind Release-Gate
+(`family-release.yml`), Release-Lock und `docs/release-gate.md` entfernt; der Resolver kennt nur noch `resolve` und
+`fetch` (alle vier Repositories identisch, Selbsttests 8/8 in jedem). Die bearbeitete `CHANGELOG.md` von GitHub ist
+übernommen. Plugin-Code unverändert, Version 2026102700 unverändert; die Läufe dieses Berichts gelten weiter.
+
+## Nachtrag 3 (27.10.2026, nachts): Barrierefreiheit aller Verwaltungsseiten (tool #11)
+
+| Prüfung | Umgebung | Ergebnis |
+|---|---|---|
+| `accessibility.spec.js` (gesamt, mit neuem Fall „Every FlexAccess administration page, light and dark“, 18 Seiten) | 5.3 PostgreSQL 17 | „Every …“ hell und dunkel bestanden (2/2); erster Versuch scheiterte am Test-Zeitlimit (60 s für 18 vollständige axe-Läufe), Zeitlimit auf 300 s gesetzt |
+| dasselbe | 4.5 PostgreSQL 16 | 6 bestanden, 1 übersprungen (dunkles Schema erst ab 5.3) |
+| Positivkontrolle axe | 5.3, dunkles Schema, Systemstatus mit eingefügtem Bild ohne Alternativtext und kontrastarmem Text | erkannt: `color-contrast`, `image-alt` |
+
+Neu: `docs/accessibility-nvda.md` (Protokoll der manuellen Screenreader-Abnahme), Abschnitt „Freigabe nach main“ in
+`docs/support-limits.md`. Plugin-Code unverändert, Version 2026102700 unverändert.

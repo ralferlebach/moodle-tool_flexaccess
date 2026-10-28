@@ -135,7 +135,7 @@ The login cards are laid out so the sheet can be cut: the gap between two cards 
 
 Recovery reports what it actually achieved. A recovery only reports "access restored" when the account can sign in and the course enrolment is effective (plugin and method enabled, enrolment active and within its dates, participant role present); otherwise it names the blocker - for example a disabled enrolment method - and links to where it can be fixed. The preview shows the same facts before anything is changed.
 
-**Releases of the plugin family.** All four plugins are tested as one exactly pinned combination: every CI run resolves the sibling plugins once to commit SHAs (all at the same version, no fallback to another branch) and installs exactly those, with tool_mergeusers pinned to a commit. The release gate (workflow "FlexAccess family release gate") tests a committed lock of all four commits on Moodle 4.5 to 5.3 including the two-site LTI journeys; see [docs/release-gate.md](docs/release-gate.md).
+**Testing the plugin family.** Every CI run tests the plugin together with its siblings: it resolves the sibling plugins once to commit SHAs (all at the same version, no fallback to another branch) and installs exactly those, with tool_mergeusers pinned to a commit. The two-site LTI journeys run in enrol_flexaccess (workflow "LTI interop"). What the tests do and do not cover: [docs/support-limits.md](docs/support-limits.md).
 
 **Pitfall:** invitations and campaign links are bearer secrets. Only their hash is stored, so a lost link cannot be recovered - it can only be replaced, which invalidates the old one.
 

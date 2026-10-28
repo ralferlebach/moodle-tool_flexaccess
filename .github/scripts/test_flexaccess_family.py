@@ -16,9 +16,8 @@
 """Self-tests of flexaccess_family.py against local fixture repositories (tool_flexaccess #12).
 
 Every negative case must fail hard: a missing branch, unequal versions, a missing or short SHA, an
-unpinned tool_mergeusers, a tampered lock (wrong repository, wrong version, unknown commit, extra or
-missing plugin), a release ZIP checksum mismatch and - for content-pinned locks - a sibling head or a
-tool_flexaccess commit whose files differ from the locked release tree. Run: python3 test_flexaccess_family.py
+unpinned tool_mergeusers and a tampered run lock (wrong repository, wrong version, unknown commit, extra or
+missing plugin). Run: python3 test_flexaccess_family.py
 """
 
 import io
@@ -201,157 +200,9 @@ class FamilyTest(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertIn('the lock says', err)
 
-    def write_release_lock(self, data):
-        """A committed release lock file."""
-        path = os.path.join(self.tmp, 'release.lock.json')
-        with open(path, 'w', encoding='utf-8') as handle:
-            json.dump(data, handle)
-        return path
-
-    def release_lock(self):
-        """A valid release lock for the fixture heads (tool_flexaccess as SELF)."""
-        code, out, err = self.cli('pin', '--ref', 'development')
-        self.assertEqual(0, code, err)
-        return json.loads(out)
-
-    def test_release_lock_is_verified_and_completed(self):
-        data = self.release_lock()
-        self.assertEqual('SELF', data['plugins']['tool_flexaccess']['sha'])
-        out = os.path.join(self.tmp, 'resolved.json')
-        code, _, err = self.cli('lock', '--lock-file', self.write_release_lock(data), '--self', 'tool_flexaccess',
-                                '--self-dir', self.self_dir, '--self-sha', 'b' * 40, '--out', out)
-        self.assertEqual(0, code, err)
-        self.assertEqual('b' * 40, load(out)['plugins']['tool_flexaccess']['sha'])
-
-    def test_release_lock_with_wrong_commit_version_fails(self):
-        data = self.release_lock()
-        old = self.make_repo('owner/moodle-mod_flexaccess', 'mod_flexaccess', 2026092900, branch='old')
-        data['plugins']['mod_flexaccess']['sha'] = old
-        code, _, err = self.cli('lock', '--lock-file', self.write_release_lock(data), '--self', 'tool_flexaccess',
-                                '--self-dir', self.self_dir, '--self-sha', 'b' * 40)
-        self.assertEqual(1, code)
-        self.assertIn('does not carry the locked content', err)
-        del data['plugins']['mod_flexaccess']['content']
-        code, _, err = self.cli('lock', '--lock-file', self.write_release_lock(data), '--self', 'tool_flexaccess',
-                                '--self-dir', self.self_dir, '--self-sha', 'b' * 40)
-        self.assertEqual(1, code)
-        self.assertIn('the lock says', err)
-
-    def content_lock(self):
-        """A content-pinned release lock of the fixture repositories (pin-local), as a dict."""
-        code, out, err = self.cli('pin-local', '--parent', os.path.join(self.root, 'owner'))
-        self.assertEqual(0, code, err)
-        return json.loads(out)
-
-    def verify_content_lock(self, data, self_dir=None):
-        """Run the gate's lock command on a content lock; returns (code, completed lock or None, stderr)."""
-        out = os.path.join(self.tmp, 'completed.json')
-        if os.path.exists(out):
-            os.remove(out)
-        code, _, err = self.cli('lock', '--lock-file', self.write_release_lock(data), '--self', 'tool_flexaccess',
-                                '--self-dir', self_dir or os.path.join(self.root, 'owner/moodle-tool_flexaccess'),
-                                '--self-sha', 'c' * 40, '--out', out)
-        return code, (load(out) if code == 0 else None), err
-
-    def reupload(self, component, extra=None, mode=None):
-        """Simulate a manual upload: an unrelated commit, then a commit restoring the released files."""
-        path = os.path.join(self.root, 'owner/moodle-' + component)
-        with open(os.path.join(path, 'scratch.txt'), 'w', encoding='utf-8') as handle:
-            handle.write('in between\n')
-        run('add', '-A', cwd=path)
-        run('commit', '-q', '-m', 'in between', cwd=path)
-        os.remove(os.path.join(path, 'scratch.txt'))
-        if extra:
-            with open(os.path.join(path, extra), 'w', encoding='utf-8') as handle:
-                handle.write('left over\n')
-        if mode:
-            os.chmod(os.path.join(path, 'version.php'), mode)
-        run('add', '-A', cwd=path)
-        run('commit', '-q', '-m', 'upload by someone else', cwd=path)
-        return subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=path, check=True, capture_output=True,
-                              text=True).stdout.strip()
-
-    def test_content_lock_resolves_the_uploaded_commit(self):
-        data = self.content_lock()
-        self.assertEqual('SELF', data['plugins']['tool_flexaccess']['sha'])
-        self.assertNotIn('sha', data['plugins']['auth_flexaccess'])
-        uploaded = self.reupload('auth_flexaccess', mode=0o755)
-        code, completed, err = self.verify_content_lock(data)
-        self.assertEqual(0, code, err)
-        self.assertEqual(uploaded, completed['plugins']['auth_flexaccess']['sha'], 'File modes do not matter.')
-        self.assertEqual(self.heads['enrol_flexaccess'], completed['plugins']['enrol_flexaccess']['sha'])
-        self.assertEqual('c' * 40, completed['plugins']['tool_flexaccess']['sha'])
-        (code, _, err), dest = self.fetch(completed)
-        self.assertEqual(0, code, err)
-
-    def test_content_drift_fails(self):
-        data = self.content_lock()
-        self.reupload('enrol_flexaccess', extra='stale.php')
-        code, _, err = self.verify_content_lock(data)
-        self.assertEqual(1, code)
-        self.assertIn('no longer carries the locked content', err)
-
-    def test_unknown_content_fails(self):
-        data = self.content_lock()
-        data['plugins']['mod_flexaccess']['content'] = 'e' * 64
-        code, _, err = self.verify_content_lock(data)
-        self.assertEqual(1, code)
-        self.assertIn('does not carry the locked content', err)
-
-    def test_self_content_is_checked_without_the_lock_file(self):
-        data = self.content_lock()
-        tool = os.path.join(self.root, 'owner/moodle-tool_flexaccess')
-        os.makedirs(os.path.join(tool, '.github'))
-        with open(os.path.join(tool, family.LOCK_PATH), 'w', encoding='utf-8') as handle:
-            json.dump(data, handle)
-        run('add', '-A', cwd=tool)
-        run('commit', '-q', '-m', 'add the lock', cwd=tool)
-        code, _, err = self.verify_content_lock(data)
-        self.assertEqual(0, code, 'Committing the lock does not change the locked tool content: ' + err)
-        with open(os.path.join(tool, 'extra.php'), 'w', encoding='utf-8') as handle:
-            handle.write('<?php\n')
-        run('add', '-A', cwd=tool)
-        run('commit', '-q', '-m', 'drift', cwd=tool)
-        code, _, err = self.verify_content_lock(data)
-        self.assertEqual(1, code)
-        self.assertIn('differs from the locked one', err)
-
-    def test_invalid_content_digest_fails(self):
-        data = self.content_lock()
-        data['plugins']['mod_flexaccess']['content'] = 'abc'
-        code, _, err = self.verify_content_lock(data)
-        self.assertEqual(1, code)
-        self.assertIn('invalid content digest', err)
-
-    def test_release_lock_must_name_self(self):
-        data = self.release_lock()
-        data['plugins']['tool_flexaccess']['sha'] = self.heads['tool_flexaccess']
-        code, _, err = self.cli('lock', '--lock-file', self.write_release_lock(data), '--self', 'tool_flexaccess',
-                                '--self-dir', self.self_dir, '--self-sha', 'b' * 40)
-        self.assertEqual(1, code)
-        self.assertIn('SELF', err)
-
-    def test_missing_release_lock_fails(self):
-        code, _, err = self.cli('lock', '--lock-file', os.path.join(self.tmp, 'absent.json'), '--self', 'tool_flexaccess',
-                                '--self-dir', self.self_dir, '--self-sha', 'b' * 40)
-        self.assertEqual(1, code)
-        self.assertIn('no release lock', err)
-
-    def test_zip_checksum_mismatch_fails(self):
-        code, lock, err = self.resolve()
-        data = load(lock)
-        data['plugins']['tool_flexaccess']['sha'] = self.heads['tool_flexaccess']
-        code, out, err = self.cli('zipcheck', '--lock-json', json.dumps(data))
-        self.assertEqual(0, code, err)
-        data['plugins']['auth_flexaccess']['zip_sha256'] = '0' * 64
-        code, _, err = self.cli('zipcheck', '--lock-json', json.dumps(data))
-        self.assertEqual(1, code)
-        self.assertIn('checksum', err)
-
-
     def test_git_runs_without_background_maintenance(self):
         # git >= 2.47 runs automatic maintenance after a fetch as a detached process, which kept writing into the
-        # throw-away repositories while they were removed (release gate 2026102700, git 2.55). Whatever the
+        # throw-away repositories while they were removed (GitHub runner with git 2.55). Whatever the
         # runner's git configuration says, the resolver's git calls must not start it.
         repo = os.path.join(self.tmp, 'maintenance')
         os.makedirs(repo)
@@ -365,11 +216,6 @@ class FamilyTest(unittest.TestCase):
             self.assertEqual('false', family.git('config', '--get', 'maintenance.auto', cwd=repo).strip())
             self.assertEqual('0', family.git('config', '--get', 'gc.auto', cwd=repo).strip())
             self.assertEqual('false', family.git('config', '--get', 'fetch.writeCommitGraph', cwd=repo).strip())
-            # A content lookup against a remote leaves nothing running and nothing behind.
-            remote = os.path.join(self.root, 'owner/moodle-auth_flexaccess')
-            head = family.find_content_commit('owner/moodle-auth_flexaccess', 'development',
-                                              family.content_digest(remote))
-            self.assertEqual(self.heads['auth_flexaccess'], head)
         finally:
             if previous is None:
                 del os.environ['GIT_CONFIG_GLOBAL']

@@ -25,6 +25,8 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+const path = require('path');
+const { execFileSync } = require('child_process');
 const { test, expect } = require('@playwright/test');
 const { loginAs } = require('./helpers');
 const AxeBuilder = require('@axe-core/playwright').default;
@@ -107,3 +109,74 @@ test.describe('FlexAccess administrative pages accessibility', () => {
         });
     }
 });
+
+/**
+ * Run the CLI helper on the site under test.
+ *
+ * @param {...(string|number)} args Command and arguments.
+ * @returns {object} Parsed JSON output.
+ */
+function cli(...args) {
+    const file = path.join(__dirname, 'merge_cli.php');
+    return JSON.parse(execFileSync('php', [file, ...args.map(String)], { encoding: 'utf8' }).trim().split('\n').pop());
+}
+
+// tool_flexaccess #11 (Moodle 5.3, accessibility): every FlexAccess administration page, including forms,
+// confirmations and the merge review, in the light colour scheme and - where Moodle has colour modes (5.3+) - in
+// the dark one. Full WCAG 2.1 A/AA rule set, not only contrast. The manager follows the browser's colour scheme
+// (seed), so the emulated scheme is the one Moodle renders.
+test.describe('Every FlexAccess administration page, light and dark (tool_flexaccess #11)', () => {
+    test.skip(!COURSE_ID || !MANAGER_USER || !MANAGER_PASS || !process.env.FLEXACCESS_RECOVERY_OK_ID,
+        'The fixture was not seeded.');
+
+    for (const scheme of ['light', 'dark']) {
+        test(`no serious WCAG 2.1 AA violation on any page in the ${scheme} colour scheme`, async ({ page }) => {
+            // 18 pages with a full axe run each.
+            test.setTimeout(300000);
+            const E = process.env;
+            const batch = cli('newbatch', COURSE_ID, 2);
+            const pages = [
+                '/admin/tool/flexaccess/index.php',
+                '/admin/tool/flexaccess/accounts.php',
+                '/admin/tool/flexaccess/status.php',
+                '/admin/tool/flexaccess/ltiidentities.php',
+                `/admin/tool/flexaccess/ltiidentities.php?action=review&fromid=${E.FLEXACCESS_MERGE_FLEX_ID}`
+                    + `&toid=${E.FLEXACCESS_MERGE_KEEP_ID}`,
+                '/admin/tool/flexaccess/lockreview.php',
+                '/admin/tool/flexaccess/mailqueue.php',
+                `/admin/tool/flexaccess/course.php?courseid=${COURSE_ID}`,
+                `/admin/tool/flexaccess/coursebatches.php?courseid=${COURSE_ID}`,
+                '/admin/tool/flexaccess/batches.php',
+                `/admin/tool/flexaccess/batchdownload.php?id=${batch.id}`,
+                `/admin/tool/flexaccess/batchconvert.php?id=${batch.id}`,
+                '/admin/tool/flexaccess/invitations.php',
+                '/admin/tool/flexaccess/campaigns.php',
+                `/admin/tool/flexaccess/user.php?userid=${E.FLEXACCESS_RECOVERY_OK_ID}`,
+                `/admin/tool/flexaccess/recover.php?userid=${E.FLEXACCESS_RECOVERY_OK_ID}`
+                    + `&courseid=${E.FLEXACCESS_RECOVERY_COURSE_ID}`,
+                `/enrol/flexaccess/restrictions.php?courseid=${COURSE_ID}`,
+            ];
+            await page.emulateMedia({ colorScheme: scheme });
+            await loginAsManager(page);
+            const found = {};
+            for (const url of pages) {
+                const response = await page.goto(url);
+                expect(response.status(), url).toBe(200);
+                await page.waitForLoadState('load');
+                await expect(page.getByRole('heading', { level: 1 }).first(), url).toBeVisible();
+                const applied = await page.locator('html').getAttribute('data-bs-theme');
+                if (applied === null) {
+                    test.skip(scheme === 'dark', 'This Moodle version has no colour modes (dark mode starts with 5.3).');
+                } else {
+                    expect(applied, url).toBe(scheme);
+                }
+                const violations = await blockingViolations(page);
+                if (violations.length) {
+                    found[url] = violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+                }
+            }
+            expect(found).toEqual({});
+        });
+    }
+});
+
