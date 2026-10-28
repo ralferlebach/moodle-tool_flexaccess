@@ -180,11 +180,39 @@ final class navigation {
      * @return string HTML.
      */
     private static function render(array $tabs, string $active, ?string $sub): string {
-        global $OUTPUT;
         if (!$tabs) {
             return '';
         }
-        return $OUTPUT->render(self::tree($tabs, $active, $sub));
+        return self::render_row(self::tree($tabs, $active, $sub)->subtree);
+    }
+
+    /**
+     * One row of tabs (and the row of the selected group below it) in Moodle's tab markup.
+     *
+     * Moodle's tab template renders the selected tab without a link and without aria-current, so a screen
+     * reader neither reaches it with Tab nor learns which tab is current (tool_flexaccess #11, NVDA). Here
+     * every tab stays a link; the selected one carries aria-current="page", the selected tab's group
+     * aria-current="true".
+     *
+     * @param \tabobject[] $row Tabs of the row.
+     * @return string HTML.
+     */
+    private static function render_row(array $row): string {
+        $items = '';
+        $next = '';
+        foreach ($row as $tab) {
+            $current = $tab->selected ? 'page' : ($tab->activated ? 'true' : null);
+            $attributes = ['class' => 'nav-link' . ($current ? ' active' : ''), 'href' => $tab->link->out(false),
+                'title' => $tab->title];
+            if ($current) {
+                $attributes['aria-current'] = $current;
+            }
+            $items .= \html_writer::tag('li', \html_writer::tag('a', s($tab->text), $attributes), ['class' => 'nav-item']);
+            if ($current && $tab->subtree) {
+                $next = self::render_row($tab->subtree);
+            }
+        }
+        return \html_writer::tag('ul', $items, ['class' => 'nav nav-tabs mb-3']) . $next;
     }
 
     /**

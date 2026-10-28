@@ -1,0 +1,15 @@
+{
+  "name": "tool_flexaccess-nvda",
+  "private": true,
+  "version": "1.0.0",
+  "description": "NVDA screen reader journeys for tool_flexaccess (Windows, real NVDA through Guidepup)",
+  "scripts": {
+    "test": "playwright test --config playwright.config.js"
+  },
+  "devDependencies": {
+    "@guidepup/guidepup": "0.36.4",
+    "@guidepup/playwright": "0.20.0",
+    "@guidepup/setup": "0.29.2",
+    "@playwright/test": "1.62.1"
+  }
+}

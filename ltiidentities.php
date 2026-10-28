@@ -360,6 +360,9 @@ if ($action === 'review' && $fromid > 0 && $toid > 0) {
                 . html_writer::select($proofs, 'prooftype', '', ['' => 'choosedots'], [
                     'id' => 'id_prooftype',
                     'required' => 'required',
+                    // An untouched required select counts as invalid in the browser, so screen readers said
+                    // "invalid entry" before anything was chosen (tool_flexaccess #11, NVDA).
+                    'aria-invalid' => 'false',
                 ]),
             'mb-2'
         );

@@ -51,3 +51,9 @@ tests/load/.load-env
 # Python bytecode of the CI helper scripts
 __pycache__/
 *.pyc
+
+# Playwright and NVDA run artefacts
+tests/playwright/test-results/
+tests/playwright/playwright-report/
+tests/playwright/nvda/results/
+tests/playwright/nvda/report/

@@ -67,6 +67,19 @@ final class navigation_test extends \advanced_testcase {
         $this->assertSame([navigation::STATUS], $activated);
         $html = navigation::render_system(navigation::STATUS, 'mailqueue');
         $this->assertStringContainsString(get_string('mailqueue', 'tool_flexaccess'), $html);
+        // Screen readers: every tab is a link, the current page and its group are marked (tool #11, NVDA).
+        $dom = new \DOMDocument();
+        $dom->loadHTML('<?xml encoding="utf-8"?><div>' . $html . '</div>');
+        $current = [];
+        foreach ($dom->getElementsByTagName('a') as $link) {
+            $this->assertNotSame('', $link->getAttribute('href'), $link->textContent);
+            if ($link->hasAttribute('aria-current')) {
+                $current[$link->getAttribute('aria-current')][] = $link->getAttribute('href');
+            }
+        }
+        $this->assertCount(1, $current['page']);
+        $this->assertStringEndsWith('/admin/tool/flexaccess/mailqueue.php', $current['page'][0]);
+        $this->assertCount(1, $current['true']);
     }
 
     /**

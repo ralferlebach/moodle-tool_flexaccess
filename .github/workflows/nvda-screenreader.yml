@@ -1,0 +1,214 @@
+name: NVDA screen reader
+
+# tool_flexaccess #11 (COMPAT-010): a real NVDA on Windows reads the FlexAccess pages of a real Moodle 5.3 with the
+# four FlexAccess plugins at the commits of this run (and the pinned tool_mergeusers). The journeys N01-N13 of
+# docs/accessibility-nvda.md assert what NVDA actually said after each keyboard action; a negative control proves
+# that the oracle rejects an unnamed button, an unattached error message and an unreachable tab.
+#
+# Not optional: no continue-on-error, no skip. A missing NVDA, browser, database, site or speech channel fails the
+# job, and the job also fails when fewer journeys ran than expected or any was skipped. Make "NVDA (Windows,
+# Moodle 5.3)" a required status check of the branch to block merges on it.
+#
+# Architecture: GitHub's Windows runners have no service containers, so the job builds the whole site natively -
+# PostgreSQL 17, PHP 8.3, Moodle 5.3 (public/ layout) served by PHP's built-in server - next to the browser and
+# NVDA (Guidepup's NVDA build, installed by @guidepup/setup at the version pinned in tests/playwright/nvda).
+on:
+  push:
+    branches: [development, main]
+  workflow_dispatch:
+
+concurrency:
+  group: nvda-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nvda:
+    name: NVDA (Windows, Moodle 5.3)
+    runs-on: windows-2025
+    timeout-minutes: 120
+    env:
+      MOODLE_BRANCH: MOODLE_503_STABLE
+      FLEXACCESS_BASE_URL: http://127.0.0.1:8000
+      # The number of journeys that must pass (1 negative control + N01-N09 + N10-N12 light + N10-N12 dark).
+      NVDA_EXPECTED_TESTS: 16
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Long paths for the Moodle checkout
+        run: git config --global core.longpaths true
+
+      - name: Check out plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pgsql, gd, intl, zip, soap, mbstring, curl, xml, exif, sodium, fileinfo, openssl
+          ini-values: max_input_vars=5000, memory_limit=512M, max_execution_time=300
+          tools: composer
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: PostgreSQL 17
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Use the runner's PostgreSQL when it is version 17 (Moodle 5.3 requires 17); otherwise install it.
+          $bin = $env:PGBIN
+          $version = if ($bin -and (Test-Path "$bin\psql.exe")) { & "$bin\psql.exe" --version } else { '' }
+          Write-Host "Preinstalled PostgreSQL: '$version'"
+          if ($version -match ' 17\.') {
+            $service = Get-Service -Name 'postgresql*' | Select-Object -First 1
+            Set-Service -Name $service.Name -StartupType Manual
+            Start-Service -Name $service.Name
+          } else {
+            choco install postgresql17 --no-progress -y --params '/Password:root /Port:5432'
+            $bin = 'C:\Program Files\PostgreSQL\17\bin'
+          }
+          Add-Content -Path $env:GITHUB_ENV -Value "PGBIN=$bin"
+          $env:PGPASSWORD = 'root'
+          for ($i = 0; $i -lt 30; $i++) {
+            & "$bin\pg_isready.exe" -h 127.0.0.1 -p 5432
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Seconds 2
+          }
+          & "$bin\psql.exe" -h 127.0.0.1 -U postgres -c "CREATE ROLE moodle LOGIN SUPERUSER PASSWORD 'moodle';"
+          & "$bin\psql.exe" -h 127.0.0.1 -U postgres -c "CREATE DATABASE moodle OWNER moodle ENCODING 'UTF8' TEMPLATE template0;"
+          & "$bin\psql.exe" -h 127.0.0.1 -U postgres -Atc 'SELECT version();'
+          if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL is not available.' }
+
+      - name: Check out Moodle 5.3
+        run: |
+          git clone --depth 1 --branch "$MOODLE_BRANCH" https://github.com/moodle/moodle.git moodle
+          test -d moodle/public || { echo "::error::Moodle 5.3 must have the public/ layout"; exit 1; }
+          (cd moodle && composer install --no-dev --no-interaction --quiet)
+
+      - name: Install the plugin family at the commits of this run
+        run: |
+          # The siblings resolved ONCE from the branch of this run to commit SHAs, all at this plugin's version;
+          # tool_mergeusers pinned. No fallback: a missing branch or another version fails the run.
+          python plugin/.github/scripts/test_flexaccess_family.py
+          python plugin/.github/scripts/flexaccess_family.py resolve --self tool_flexaccess --self-dir plugin \
+            --self-sha "$GITHUB_SHA" --ref "$GITHUB_REF_NAME" --wait 600 --out family-lock.json \
+            --summary "$GITHUB_STEP_SUMMARY"
+          python plugin/.github/scripts/flexaccess_family.py fetch --lock-file family-lock.json \
+            --self tool_flexaccess --layout moodle --dest moodle/public --with-mergeusers
+          rm -rf moodle/public/admin/tool/flexaccess
+          cp -a plugin moodle/public/admin/tool/flexaccess
+          rm -rf moodle/public/admin/tool/flexaccess/.git
+          for dest in auth/flexaccess enrol/flexaccess mod/flexaccess admin/tool/flexaccess admin/tool/mergeusers; do
+            test -f "moodle/public/$dest/version.php" || { echo "::error::$dest is missing"; exit 1; }
+            echo "$dest: $(grep -o 'version *= *[0-9]*' "moodle/public/$dest/version.php" | head -1)"
+          done
+
+      - name: Install Moodle site
+        run: |
+          mkdir -p /c/moodledata
+          cd moodle
+          php admin/cli/install.php --non-interactive --agree-license \
+            --dbtype=pgsql --dbhost=127.0.0.1 --dbport=5432 --dbname=moodle --dbuser=moodle --dbpass=moodle \
+            --wwwroot="$FLEXACCESS_BASE_URL" --dataroot=C:/moodledata \
+            --fullname=CI --shortname=CI --adminpass='Admin!23' --adminemail=ci@example.invalid
+
+      - name: Seed the fixture
+        run: |
+          cd moodle/public
+          php admin/tool/flexaccess/tests/playwright/seed.php > ../../seed.env
+          sed -n "s/^export \([A-Z_][A-Z_]*\)=.*/  \1/p" ../../seed.env
+          sed -n "s/^export \([A-Z_][A-Z_]*\)='\(.*\)'$/\1=\2/p" ../../seed.env >> "$GITHUB_ENV"
+
+      - name: Install the browser and NVDA
+        run: |
+          cd moodle/public/admin/tool/flexaccess/tests/playwright/nvda
+          npm ci
+          npx playwright install chromium
+          npx guidepup install nvda
+          node -e "const p = require('@guidepup/guidepup/lib/windows/NVDA/getNVDAInstallationPath'); \
+            const exe = p.getNVDAInstallationPath(); if (!exe) { process.exit(1); } console.log(exe)" > ../../../../../../../nvda-path.txt
+          echo "NVDA: $(cat ../../../../../../../nvda-path.txt)"
+
+      - name: Record the tested combination
+        shell: pwsh
+        run: |
+          $nvda = Get-Content nvda-path.txt
+          $info = (Get-Item $nvda).VersionInfo
+          Push-Location moodle/public/admin/tool/flexaccess/tests/playwright/nvda
+          $chrome = node -e "console.log(require('playwright').chromium.executablePath())"
+          $playwright = node -e "console.log(require('@playwright/test/package.json').version)"
+          $guidepup = node -e "console.log(require('@guidepup/guidepup/package.json').version)"
+          Pop-Location
+          if (-not (Test-Path $chrome)) { throw "Chromium is missing: $chrome" }
+          $chromeinfo = (Get-Item $chrome).VersionInfo
+          $lines = @(
+            '### NVDA run',
+            '',
+            "| Item | Version |",
+            "|---|---|",
+            "| Windows | $([System.Environment]::OSVersion.VersionString) |",
+            "| NVDA | $($info.ProductVersion) ($nvda) |",
+            "| Chromium | $($chromeinfo.ProductVersion) |",
+            "| Playwright / Guidepup | $playwright / $guidepup |",
+            "| PHP | $(php -r 'echo PHP_VERSION;') |",
+            "| PostgreSQL | $(& "$env:PGBIN\psql.exe" --version) |",
+            "| Node | $(node --version) |",
+            "| Moodle | $env:MOODLE_BRANCH @ $(git -C moodle rev-parse HEAD) |",
+            "| tool_flexaccess | $env:GITHUB_SHA (siblings: see the family table above and family-lock.json) |"
+          )
+          $lines | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          $lines | Write-Host
+
+      - name: Run the NVDA journeys
+        run: |
+          # The web server runs inside this step (a server started in an earlier step does not reliably survive).
+          php -S 127.0.0.1:8000 -t moodle/public > server.log 2>&1 &
+          code=000
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 "$FLEXACCESS_BASE_URL/login/index.php" || true)
+            [ "$code" = "200" ] && break
+            sleep 3
+          done
+          [ "$code" = "200" ] || { echo "::error::Moodle is not reachable (HTTP $code)"; tail -50 server.log; exit 1; }
+          # PHP's built-in server answers one request at a time on Windows: build the caches before the journeys.
+          for url in /login/index.php "/auth/flexaccess/access.php?courseid=$FLEXACCESS_COURSE_ID" \
+              "/auth/flexaccess/register.php?courseid=$FLEXACCESS_COURSE_ID" /admin/tool/flexaccess/status.php; do
+            curl -s -o /dev/null --max-time 300 "$FLEXACCESS_BASE_URL$url" || true
+          done
+          cd moodle/public/admin/tool/flexaccess/tests/playwright/nvda
+          npx playwright test --config playwright.config.js
+
+      - name: Every journey ran and passed, none was skipped
+        if: always()
+        run: |
+          results=moodle/public/admin/tool/flexaccess/tests/playwright/nvda/results/nvda-results.json
+          test -f "$results" || { echo "::error::No NVDA results: the journeys did not run"; exit 1; }
+          node -e "
+            const r = require(process.argv[1]);
+            const s = r.stats;
+            console.log(JSON.stringify(s));
+            const ok = s.expected + s.flaky;
+            if (s.unexpected || s.skipped || ok !== Number(process.env.NVDA_EXPECTED_TESTS)) {
+              console.log('::error::NVDA journeys: ' + ok + ' passed of ' + process.env.NVDA_EXPECTED_TESTS
+                + ', ' + s.unexpected + ' failed, ' + s.skipped + ' skipped');
+              process.exit(1);
+            }
+          " "$(pwd)/$results"
+
+      - name: Keep the report, the speech transcripts and the server log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nvda-screenreader-${{ github.run_id }}
+          path: |
+            family-lock.json
+            server.log
+            moodle/public/admin/tool/flexaccess/tests/playwright/nvda/results
+            moodle/public/admin/tool/flexaccess/tests/playwright/nvda/report
+          if-no-files-found: warn

@@ -26,6 +26,8 @@ const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: '.',
+  // The NVDA journeys need Windows and a real NVDA; they have their own configuration and workflow.
+  testIgnore: ['nvda/**'],
   timeout: 60 * 1000,
   expect: { timeout: 10 * 1000 },
   fullyParallel: false,
